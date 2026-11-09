@@ -124,7 +124,7 @@ jobs:
               "signingStyle": "manual",
               "signingCertificate": os.environ["SIGNING_IDENTITY"],
               "provisioningProfiles": {
-                  "ru.firedev.firecoins": os.environ["PROFILE_NAME"]
+                  "app.ursamajor9973.elephant5884": os.environ["PROFILE_NAME"]
               },
               "destination": "export"
           }
