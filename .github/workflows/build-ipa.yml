@@ -61,7 +61,20 @@ jobs:
           echo "Checking P12 structure..."
           openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -noout
           echo "P12 validation successful"
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          umask 077
+
+          openssl pkcs12 \
+            -in "$CERT_PATH" \
+            -passin env:P12_PASSWORD \
+            -nodes \
+            -out "$RUNNER_TEMP/firecoins-signing.pem"
+
+          chmod 600 "$RUNNER_TEMP/firecoins-signing.pem"
+
+          security import "$RUNNER_TEMP/firecoins-signing.pem" \
+            -A \
+            -f pemseq \
+            -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
 
