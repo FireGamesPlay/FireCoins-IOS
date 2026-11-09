@@ -1,0 +1,2 @@
+This folder is reserved for app resources added in future iterations.
+The app icon currently lives in the root Assets.xcassets catalog.

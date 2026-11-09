@@ -1,0 +1,136 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		7CB96E02B12F5B998823C652 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF774BD7D48957949D3C378D /* Assets.xcassets */; };
+		47804CF5ECC75B12A7D8461D /* FireCoinsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C61220CAAE56BABD41C4D7 /* FireCoinsApp.swift */; };
+		19C69611664E548983E81A69 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA9E6B1FF9E5226A470D52A /* Components.swift */; };
+		01FCB2404679584F9FD060AC /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4CA20C61655F769EB547A7 /* Theme.swift */; };
+		AA4B56DC833B592CADB6405A /* DomainModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B171ED81171D55EC968F5048 /* DomainModels.swift */; };
+		1906FD78E46E5A3C91719D84 /* FireCoinsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1453C4D6E785EF4805933CE /* FireCoinsRepository.swift */; };
+		7175DFA085E757DA87B8D996 /* InMemoryFireCoinsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF95CA19E605A71A1735133 /* InMemoryFireCoinsRepository.swift */; };
+		DF8AB76DC71F5EFE9FA771DB /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B35901EA76085D06A5EBFAC2 /* AppStore.swift */; };
+		823409451F1C5778A27849D2 /* AdminPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7E3C754D065CFC94386DEA /* AdminPanelView.swift */; };
+		3BDD1136BD475387B8506FA8 /* CasinoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F1E5C3DEE251EB90F29E2A /* CasinoView.swift */; };
+		CEA63C601DC455719F337FD8 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFF213255FF54788641D2AF /* HistoryView.swift */; };
+		A0B077041F0E594BB8E7DB1C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05ECEC210F7355F8B303C078 /* HomeView.swift */; };
+		B60280CC3940515C92418FB9 /* InvitationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B86E88AADBB05E7F8DFAD42D /* InvitationView.swift */; };
+		8D45BFC7DA0654FB901A2106 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302E57D804F05868B059CACD /* ProfileView.swift */; };
+		38FEB4DBB68D5F4AA9147A5D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA9FDA526EC5509AA5294E1 /* RootView.swift */; };
+		D09059B9C45C54779BC0BFB7 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D578226272935719A9464E18 /* WalletView.swift */; };
+		F5CE4406B4DB5A38BB6129F0 /* FireCoinsRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF481C3ECAF5F0DBE657C3E /* FireCoinsRepositoryTests.swift */; };
+
+		85C61220CAAE56BABD41C4D7 /* FireCoinsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FireCoinsApp.swift"; sourceTree = "<group>"; };
+		9DA9E6B1FF9E5226A470D52A /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Components.swift"; sourceTree = "<group>"; };
+		5A4CA20C61655F769EB547A7 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Theme.swift"; sourceTree = "<group>"; };
+		B171ED81171D55EC968F5048 /* DomainModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DomainModels.swift"; sourceTree = "<group>"; };
+		E1453C4D6E785EF4805933CE /* FireCoinsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FireCoinsRepository.swift"; sourceTree = "<group>"; };
+		FEF95CA19E605A71A1735133 /* InMemoryFireCoinsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InMemoryFireCoinsRepository.swift"; sourceTree = "<group>"; };
+		B35901EA76085D06A5EBFAC2 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore.swift"; sourceTree = "<group>"; };
+		CF7E3C754D065CFC94386DEA /* AdminPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AdminPanelView.swift"; sourceTree = "<group>"; };
+		20F1E5C3DEE251EB90F29E2A /* CasinoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CasinoView.swift"; sourceTree = "<group>"; };
+		CCFF213255FF54788641D2AF /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryView.swift"; sourceTree = "<group>"; };
+		05ECEC210F7355F8B303C078 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HomeView.swift"; sourceTree = "<group>"; };
+		B86E88AADBB05E7F8DFAD42D /* InvitationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InvitationView.swift"; sourceTree = "<group>"; };
+		302E57D804F05868B059CACD /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProfileView.swift"; sourceTree = "<group>"; };
+		EDA9FDA526EC5509AA5294E1 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RootView.swift"; sourceTree = "<group>"; };
+		D578226272935719A9464E18 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WalletView.swift"; sourceTree = "<group>"; };
+		6DF481C3ECAF5F0DBE657C3E /* FireCoinsRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FireCoinsRepositoryTests.swift"; sourceTree = "<group>"; };
+		AF774BD7D48957949D3C378D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		511604315DA95CAE9EFF6CC3 /* FireCoins.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FireCoins.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1116AB06E14F5095B01D0C9F /* FireCoinsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FireCoinsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		D01EFB37195A5558983B29BA = {isa = PBXGroup; children = (574F0153BCC157A1B07D91BF, 65D2BB9023085BCBB26F4BB3, B0575285BD1D50579A22C9AF, 1388823B64735672951528C9, AF774BD7D48957949D3C378D, 2157B4CAB66D52B7A34E2026); sourceTree = "<group>"; };
+		2157B4CAB66D52B7A34E2026 /* Products */ = {isa = PBXGroup; children = (511604315DA95CAE9EFF6CC3, 1116AB06E14F5095B01D0C9F); name = Products; sourceTree = "<group>"; };
+		574F0153BCC157A1B07D91BF /* App */ = {isa = PBXGroup; children = (
+			85C61220CAAE56BABD41C4D7,
+		); path = "App"; sourceTree = "<group>"; };
+		65D2BB9023085BCBB26F4BB3 /* Core */ = {isa = PBXGroup; children = (
+			E327E14CCC04534BB068DCAE,
+			32463AC759E354E48B79CAB3,
+			64C993A42AC05AB1A488573F,
+			A47EE2303D5B586BB34BFAAD,
+		); path = "Core"; sourceTree = "<group>"; };
+		B0575285BD1D50579A22C9AF /* Features */ = {isa = PBXGroup; children = (
+			349B87AFFB005171BF95AA75,
+			E38604EFB01B50908AB6C71E,
+			5738834368445300AE7B1175,
+			FD53D255E38E5D2AA68552D1,
+			DF1DD9C0D0025568880550D4,
+			F0FE5C45A2435F18A1A298B9,
+			17A6DD65FB0C5A4BAAF689F0,
+			9FB3811EFF745507969D7051,
+		); path = "Features"; sourceTree = "<group>"; };
+		1388823B64735672951528C9 /* Tests */ = {isa = PBXGroup; children = (
+			6DF481C3ECAF5F0DBE657C3E,
+		); path = "Tests"; sourceTree = "<group>"; };
+		E327E14CCC04534BB068DCAE /* Design */ = {isa = PBXGroup; children = (
+			9DA9E6B1FF9E5226A470D52A,
+			5A4CA20C61655F769EB547A7,
+		); path = "Design"; sourceTree = "<group>"; };
+		64C993A42AC05AB1A488573F /* Models */ = {isa = PBXGroup; children = (
+			B171ED81171D55EC968F5048,
+		); path = "Models"; sourceTree = "<group>"; };
+		32463AC759E354E48B79CAB3 /* Repositories */ = {isa = PBXGroup; children = (
+			E1453C4D6E785EF4805933CE,
+			FEF95CA19E605A71A1735133,
+		); path = "Repositories"; sourceTree = "<group>"; };
+		A47EE2303D5B586BB34BFAAD /* Store */ = {isa = PBXGroup; children = (
+			B35901EA76085D06A5EBFAC2,
+		); path = "Store"; sourceTree = "<group>"; };
+		9FB3811EFF745507969D7051 /* Admin */ = {isa = PBXGroup; children = (
+			CF7E3C754D065CFC94386DEA,
+		); path = "Admin"; sourceTree = "<group>"; };
+		349B87AFFB005171BF95AA75 /* Casino */ = {isa = PBXGroup; children = (
+			20F1E5C3DEE251EB90F29E2A,
+		); path = "Casino"; sourceTree = "<group>"; };
+		E38604EFB01B50908AB6C71E /* History */ = {isa = PBXGroup; children = (
+			CCFF213255FF54788641D2AF,
+		); path = "History"; sourceTree = "<group>"; };
+		DF1DD9C0D0025568880550D4 /* Home */ = {isa = PBXGroup; children = (
+			05ECEC210F7355F8B303C078,
+		); path = "Home"; sourceTree = "<group>"; };
+		FD53D255E38E5D2AA68552D1 /* Onboarding */ = {isa = PBXGroup; children = (
+			B86E88AADBB05E7F8DFAD42D,
+		); path = "Onboarding"; sourceTree = "<group>"; };
+		5738834368445300AE7B1175 /* Profile */ = {isa = PBXGroup; children = (
+			302E57D804F05868B059CACD,
+		); path = "Profile"; sourceTree = "<group>"; };
+		17A6DD65FB0C5A4BAAF689F0 /* Shell */ = {isa = PBXGroup; children = (
+			EDA9FDA526EC5509AA5294E1,
+		); path = "Shell"; sourceTree = "<group>"; };
+		F0FE5C45A2435F18A1A298B9 /* Wallet */ = {isa = PBXGroup; children = (
+			D578226272935719A9464E18,
+		); path = "Wallet"; sourceTree = "<group>"; };
+
+
+		3314F41782E25610B889254F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (47804CF5ECC75B12A7D8461D, 19C69611664E548983E81A69, 01FCB2404679584F9FD060AC, AA4B56DC833B592CADB6405A, 1906FD78E46E5A3C91719D84, 7175DFA085E757DA87B8D996, DF8AB76DC71F5EFE9FA771DB, 823409451F1C5778A27849D2, 3BDD1136BD475387B8506FA8, CEA63C601DC455719F337FD8, A0B077041F0E594BB8E7DB1C, B60280CC3940515C92418FB9, 8D45BFC7DA0654FB901A2106, 38FEB4DBB68D5F4AA9147A5D, D09059B9C45C54779BC0BFB7); runOnlyForDeploymentPostprocessing = 0; };
+		B4587AF6AF345DC8A0077235 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		09CAAE8F6331583B99363A68 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (7CB96E02B12F5B998823C652 /* Assets.xcassets in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		054F907395FC5E61B1A29DE8 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F5CE4406B4DB5A38BB6129F0); runOnlyForDeploymentPostprocessing = 0; };
+		55568419402351968DFCC130 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		0CA5605975015161A2DC16D5 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+
+		84829DE1F1435B4BADFCE162 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 6B44C12648EF5275BEAFBF78; proxyType = 1; remoteGlobalIDString = 848D8E061364548088E62E53; remoteInfo = FireCoins; };
+		F9D364348EA2575D99399C36 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 848D8E061364548088E62E53; targetProxy = 84829DE1F1435B4BADFCE162; };
+
+		0DE1532E77C25F6B8A1ECC47 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }; name = Debug; };
+		2180044ED2005E1B86D42C93 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 5.0; }; name = Release; };
+		707008C46F3559AB944DAE8C /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fire Coins"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = ru.firedev.firecoins; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		DAB3A91E25B75973AC4D6935 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fire Coins"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = ru.firedev.firecoins; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		79CC89897EB9588C9223C887 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = ru.firedev.firecoins.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FireCoins.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FireCoins"; }; name = Debug; };
+		0F55C076504F543892CC2C17 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = ru.firedev.firecoins.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FireCoins.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FireCoins"; }; name = Release; };
+		79ACA611D7995BCE995E098E = {isa = XCConfigurationList; buildConfigurations = (0DE1532E77C25F6B8A1ECC47, 2180044ED2005E1B86D42C93); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		18C851AFC29F52C8BE8EA3E6 = {isa = XCConfigurationList; buildConfigurations = (707008C46F3559AB944DAE8C, DAB3A91E25B75973AC4D6935); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		27493610DC6B5716A71153C0 = {isa = XCConfigurationList; buildConfigurations = (79CC89897EB9588C9223C887, 0F55C076504F543892CC2C17); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+
+
+		848D8E061364548088E62E53 /* FireCoins */ = {isa = PBXNativeTarget; buildConfigurationList = 18C851AFC29F52C8BE8EA3E6; buildPhases = (3314F41782E25610B889254F, B4587AF6AF345DC8A0077235, 09CAAE8F6331583B99363A68); buildRules = (); dependencies = (); name = FireCoins; productName = FireCoins; productReference = 511604315DA95CAE9EFF6CC3; productType = "com.apple.product-type.application"; };
+		E765BE33BD3E59ACA5A216BD /* FireCoinsTests */ = {isa = PBXNativeTarget; buildConfigurationList = 27493610DC6B5716A71153C0; buildPhases = (054F907395FC5E61B1A29DE8, 55568419402351968DFCC130, 0CA5605975015161A2DC16D5); buildRules = (); dependencies = (F9D364348EA2575D99399C36); name = FireCoinsTests; productName = FireCoinsTests; productReference = 1116AB06E14F5095B01D0C9F; productType = "com.apple.product-type.bundle.unit-test"; };
+
+		6B44C12648EF5275BEAFBF78 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {848D8E061364548088E62E53 = {CreatedOnToolsVersion = 16.0; }; E765BE33BD3E59ACA5A216BD = {CreatedOnToolsVersion = 16.0; TestTargetID = 848D8E061364548088E62E53; }; }; }; buildConfigurationList = 79ACA611D7995BCE995E098E; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = D01EFB37195A5558983B29BA; productRefGroup = 2157B4CAB66D52B7A34E2026; projectDirPath = ""; projectRoot = ""; targets = (848D8E061364548088E62E53, E765BE33BD3E59ACA5A216BD); };
+	};
+	rootObject = 6B44C12648EF5275BEAFBF78 /* Project object */;
+}
