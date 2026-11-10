@@ -1,6 +1,8 @@
 package ru.firedev.firecoins.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import ru.firedev.firecoins.data.FcCasinoRound
 import ru.firedev.firecoins.data.FcNote
 import ru.firedev.firecoins.data.FcTransaction
@@ -628,6 +631,36 @@ private fun FcSecondaryButton(
 
 private suspend fun readBytes(context: Context, uri: Uri): ByteArray? {
     return withContext(Dispatchers.IO) {
-        runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        runCatching {
+            val resolver = context.contentResolver
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                throw IllegalArgumentException("Не удалось прочитать изображение.")
+            }
+
+            var sampleSize = 1
+            val largestSide = maxOf(bounds.outWidth, bounds.outHeight)
+            while (largestSide / sampleSize > 2048) sampleSize *= 2
+
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: throw IllegalArgumentException("Не удалось открыть изображение.")
+
+            try {
+                var quality = 86
+                var bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+                while (bytes.size > 7 * 1024 * 1024 && quality > 45) {
+                    quality -= 8
+                    bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+                }
+                if (bytes.size > 8 * 1024 * 1024) {
+                    throw IllegalArgumentException("Фотография слишком большая. Выберите другое изображение.")
+                }
+                bytes
+            } finally {
+                bitmap.recycle()
+            }
+        }.getOrNull()
     }
 }
