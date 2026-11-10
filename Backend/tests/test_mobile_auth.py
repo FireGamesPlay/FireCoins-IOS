@@ -134,6 +134,14 @@ class WorkflowStoreTests(unittest.TestCase):
         self.store.append_note(111, "father", 222, "Father", "Test")
         self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
 
+    def test_workflow_store_cannot_overwrite_business_database(self) -> None:
+        with self.assertRaises(ValueError):
+            WorkflowStore(Path("/tmp/firecoins-points-test.db"))
+
+    def test_notes_are_restricted_to_the_two_configured_accounts(self) -> None:
+        with self.assertRaises(ValueError):
+            self.store.append_note(333, "father", 222, "Unknown", "No access")
+
 
 if __name__ == "__main__":
     unittest.main()
