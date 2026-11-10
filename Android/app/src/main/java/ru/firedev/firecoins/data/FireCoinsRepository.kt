@@ -47,9 +47,6 @@ data class FireCoinsSnapshot(
 )
 
 class FireCoinsRepository(private val api: ApiClient) {
-    val hasSession: Boolean
-        get() = api.hasSession
-
     suspend fun signIn(invitationCode: String): String {
         return api.signIn(invitationCode).optString("role").takeIf { it == "father" || it == "artemiy" }
             ?: throw IllegalStateException("Сервер вернул неизвестную роль.")
@@ -61,6 +58,8 @@ class FireCoinsRepository(private val api: ApiClient) {
     }
 
     suspend fun logout() = api.logout()
+
+    fun hasStoredSession(): Boolean = api.hasSession
 
     suspend fun loadSnapshot(role: String): FireCoinsSnapshot {
         val dashboard = api.get("/api/dashboard")
