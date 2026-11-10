@@ -24,6 +24,9 @@ class WorkflowPatchTests(unittest.TestCase):
 def _transaction_dict(row):
     return {}
 
+async def create_dispute(user, transaction_id_raw):
+    return {}
+
 async def resolve_dispute(user, transaction_id_raw, action):
     return {}
 
@@ -48,6 +51,9 @@ def create_app():
 TOKEN = os.environ.get("TG_BOT_TOKEN", "old-token")
 
 async def handle_dispute_response(update, context):
+    pass
+
+async def dispute_callback_handler(update, context):
     pass
 
 async def leave_note_text(update, context):
@@ -77,6 +83,8 @@ async def show_history():
             self.assertIn("workflow_store.append_note", patched_bot)
             self.assertIn("disputed = 2", patched_bot)
             self.assertIn("disputed = 3", patched_bot)
+            self.assertIn("ORDER BY timestamp DESC, id DESC", patched_bot)
+            self.assertIn("transaction_unavailable", changes[api / "services.py"])
 
             patched_server = changes[api / "server.py"]
             self.assertIn('app.router.add_get("/api/notes", authed(notes))', patched_server)
