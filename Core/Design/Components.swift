@@ -13,6 +13,116 @@ enum KeyboardDismiss {
     }
 }
 
+/// Installs non-blocking keyboard dismissal gestures on the app window.
+/// Taps inside text inputs keep their normal focus behavior; a tap elsewhere
+/// or a downward swipe resigns the active first responder.
+struct KeyboardDismissGesture: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: view.window)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: uiView.window)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        private weak var attachedWindow: UIWindow?
+        private var tapRecognizer: UITapGestureRecognizer?
+        private var panRecognizer: UIPanGestureRecognizer?
+
+        func attach(to window: UIWindow?) {
+            guard let window, attachedWindow !== window else { return }
+            detach()
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delaysTouchesBegan = false
+            tap.delaysTouchesEnded = false
+            tap.delegate = self
+            window.addGestureRecognizer(tap)
+
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+            pan.cancelsTouchesInView = false
+            pan.delaysTouchesBegan = false
+            pan.delaysTouchesEnded = false
+            pan.maximumNumberOfTouches = 1
+            pan.delegate = self
+            window.addGestureRecognizer(pan)
+
+            attachedWindow = window
+            tapRecognizer = tap
+            panRecognizer = pan
+        }
+
+        func detach() {
+            if let tapRecognizer {
+                attachedWindow?.removeGestureRecognizer(tapRecognizer)
+            }
+            if let panRecognizer {
+                attachedWindow?.removeGestureRecognizer(panRecognizer)
+            }
+            tapRecognizer = nil
+            panRecognizer = nil
+            attachedWindow = nil
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard gestureRecognizer === tapRecognizer else { return true }
+            return !isTextInput(touch.view)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+        @objc private func handleTap() {
+            KeyboardDismiss.dismiss()
+        }
+
+        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            let translation = recognizer.translation(in: recognizer.view)
+            let velocity = recognizer.velocity(in: recognizer.view)
+            if translation.y > 48 && velocity.y > 60 {
+                KeyboardDismiss.dismiss()
+            }
+        }
+
+        private func isTextInput(_ view: UIView?) -> Bool {
+            var current = view
+            while let candidate = current {
+                if candidate is UITextField || candidate is UITextView {
+                    return true
+                }
+                current = candidate.superview
+            }
+            return false
+        }
+    }
+}
+
 struct FireCoinsMark: View {
     var size: CGFloat = 42
 

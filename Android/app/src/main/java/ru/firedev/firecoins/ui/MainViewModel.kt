@@ -132,6 +132,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         execute("Заметка отправлена.") { repository.sendNote(text) }
     }
 
+    suspend fun downloadProof(transactionId: Long): ByteArray {
+        return repository.downloadProof(transactionId)
+    }
+
     fun reissueInvitation() {
         if (state.value.role != "father") return
         viewModelScope.launch {

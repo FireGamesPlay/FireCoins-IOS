@@ -17,6 +17,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,12 +35,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Casino
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -59,8 +75,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -97,8 +118,29 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     val state = viewModel.state.value
     var selectedTab by remember { mutableStateOf("home") }
     val snackbarHost = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var welcomedRole by remember { mutableStateOf<String?>(null) }
     var showWelcome by remember { mutableStateOf(false) }
+    var selectedProofBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var proofLoading by remember { mutableStateOf(false) }
+    var proofError by remember { mutableStateOf<String?>(null) }
+
+    val openProof: (Long) -> Unit = { transactionId ->
+        scope.launch {
+            proofLoading = true
+            proofError = null
+            try {
+                val bytes = viewModel.downloadProof(transactionId)
+                selectedProofBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                    ?: throw IllegalStateException("Не удалось открыть фотографию.")
+            } catch (error: Exception) {
+                proofError = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Не удалось загрузить фотографию."
+            } finally {
+                proofLoading = false
+            }
+        }
+    }
 
     LaunchedEffect(state.role, state.isLoading) {
         val currentRole = state.role
@@ -122,8 +164,18 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
         // Keep login/recovery errors on the invitation screen; SnackbarHost exists only after login.
         if (state.role != null) {
             val message = state.error ?: state.message
-            if (!message.isNullOrBlank()) snackbarHost.showSnackbar(message)
+            if (!message.isNullOrBlank() && !message.isTechnicalTimeout()) {
+                snackbarHost.showSnackbar(message)
+            }
             viewModel.clearMessage()
+        }
+    }
+
+    LaunchedEffect(proofError) {
+        val message = proofError
+        if (!message.isNullOrBlank()) {
+            snackbarHost.showSnackbar(message)
+            proofError = null
         }
     }
 
@@ -160,9 +212,26 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
 
     Scaffold(
         containerColor = FcBackground,
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = {
+            SnackbarHost(snackbarHost) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = FcSurfaceElevated,
+                    contentColor = FcText,
+                    actionColor = FcAccentLight,
+                    dismissActionContentColor = FcMuted
+                )
+            }
+        },
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = FcBackground,
+                    titleContentColor = FcText,
+                    actionIconContentColor = FcAccent
+                ),
                 title = {
                     Column {
                         Text("FIRE COINS", fontWeight = FontWeight.Bold, letterSpacing = 2.sp, color = FcAccent)
@@ -177,34 +246,42 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             )
         },
         bottomBar = {
-            Surface(color = FcSurface, shadowElevation = 8.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+            NavigationBar(
+                containerColor = FcSurface,
+                contentColor = FcMuted,
+                tonalElevation = 0.dp,
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    color = FcBorder,
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                )
+            ) {
+                NavItem("home", "Главная", tab == "home") { selectedTab = "home" }
+                NavItem("history", "История", tab == "history") { selectedTab = "history" }
+                NavItem(
+                    if (isFather) "admin" else "casino",
+                    if (isFather) "Управление" else "Рулетка",
+                    tab == "admin" || tab == "casino"
                 ) {
-                    NavItem("home", "Главная", tab == "home", Modifier.weight(1f)) { selectedTab = "home" }
-                    NavItem("history", "История", tab == "history", Modifier.weight(1f)) { selectedTab = "history" }
-                    NavItem(
-                        if (isFather) "admin" else "casino",
-                        if (isFather) "Управление" else "Рулетка",
-                        tab == "admin" || tab == "casino",
-                        Modifier.weight(1f)
-                    ) {
-                        selectedTab = if (isFather) "admin" else "casino"
-                    }
-                    NavItem("wallet", "Кошелёк", tab == "wallet", Modifier.weight(1f)) { selectedTab = "wallet" }
-                    NavItem("profile", "Профиль", tab == "profile", Modifier.weight(1f)) { selectedTab = "profile" }
+                    selectedTab = if (isFather) "admin" else "casino"
                 }
+                NavItem("wallet", "Кошелёк", tab == "wallet") { selectedTab = "wallet" }
+                NavItem("profile", "Профиль", tab == "profile") { selectedTab = "profile" }
             }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                "home" -> HomeScreen(state.balance, state.role, state.transactions)
-                "history" -> HistoryScreen(state.transactions, state.role, viewModel)
+                "home" -> HomeScreen(
+                    state.balance,
+                    state.role,
+                    state.transactions,
+                    openProof,
+                    onSelectTab = { selectedTab = it }
+                )
+                "history" -> HistoryScreen(state.transactions, state.role, viewModel, openProof)
                 "casino" -> CasinoScreen(state, viewModel)
-                "admin" -> AdminScreen(state, viewModel)
+                "admin" -> AdminScreen(state, viewModel, openProof)
                 "wallet" -> WalletScreen(state.balance, state.role, state.withdrawals, viewModel)
                 "profile" -> ProfileScreen(state, viewModel)
             }
@@ -218,6 +295,62 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             }
         }
     }
+
+    if (proofLoading) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = FcSurface,
+                border = BorderStroke(1.dp, FcBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 26.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CircularProgressIndicator(color = FcAccent)
+                    Text("Открываем фотографию…", color = FcText, fontSize = 14.sp)
+                }
+            }
+        }
+    }
+
+    selectedProofBitmap?.let { bitmap ->
+        Dialog(onDismissRequest = { selectedProofBitmap = null }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = FcSurface,
+                border = BorderStroke(1.dp, FcBorder),
+                shadowElevation = 12.dp
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Фотодоказательство",
+                            color = FcText,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { selectedProofBitmap = null }) {
+                            Text("Закрыть", color = FcAccentLight)
+                        }
+                    }
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = "Прикреплённая фотография",
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp)
+                            .clip(RoundedCornerShape(14.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -225,33 +358,38 @@ private fun NavItem(
     key: String,
     title: String,
     selected: Boolean,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = modifier.padding(horizontal = 2.dp).clickable(onClick = onClick),
-        color = if (selected) FcAccent.copy(alpha = 0.13f) else Color.Transparent,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                title.take(1),
-                color = if (selected) FcAccent else FcMuted,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
-            Text(
-                title,
-                color = if (selected) FcAccentLight else FcMuted,
-                fontSize = 9.sp,
-                maxLines = 1
-            )
-        }
+    val icon = when (key) {
+        "home" -> Icons.Outlined.Home
+        "history" -> Icons.Outlined.History
+        "admin" -> Icons.Outlined.Tune
+        "casino" -> Icons.Outlined.Casino
+        "wallet" -> Icons.Outlined.AccountBalanceWallet
+        else -> Icons.Outlined.PersonOutline
     }
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                modifier = Modifier.size(22.dp)
+            )
+        },
+        label = {
+            Text(title, fontSize = 10.sp, maxLines = 1)
+        },
+        alwaysShowLabel = true,
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = FcAccentLight,
+            selectedTextColor = FcAccentLight,
+            indicatorColor = FcAccent.copy(alpha = 0.14f),
+            unselectedIconColor = FcMuted,
+            unselectedTextColor = FcMuted
+        )
+    )
 }
 
 @Composable
@@ -459,24 +597,170 @@ private fun InvitationScreen(
 }
 
 @Composable
-private fun HomeScreen(balance: Int, role: String, transactions: List<FcTransaction>) {
+private fun HomeScreen(
+    balance: Int,
+    role: String,
+    transactions: List<FcTransaction>,
+    onProofClick: (Long) -> Unit,
+    onSelectTab: (String) -> Unit
+) {
     ScrollColumn {
-        Text(if (role == "father") "Добро пожаловать, папа" else "Твой личный счёт", color = FcMuted, fontSize = 13.sp)
-        SectionTitle("Текущий баланс")
-        SurfaceCard {
-            Text("FC ACCOUNT", color = FcAccentLight, fontSize = 10.sp, letterSpacing = 1.5.sp)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(balance.toString(), color = FcText, fontSize = 42.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif)
-                Spacer(Modifier.width(8.dp))
-                Text("FC", color = FcAccentLight, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (role == "father") "Добро пожаловать, Макс" else "Твой личный счёт",
+            color = FcMuted,
+            fontSize = 13.sp
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(25.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF34302B), Color(0xFF201D1B), Color(0xFF17191D))
+                    )
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(25.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 18.dp, end = 18.dp)
+                    .size(116.dp)
+                    .border(1.dp, Color.White.copy(alpha = 0.07f), CircleShape)
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(21.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "ТЕКУЩИЙ БАЛАНС",
+                        color = Color.White.copy(alpha = 0.68f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        color = FcAccentLight.copy(alpha = 0.13f),
+                        shape = CircleShape
+                    ) {
+                        Text(
+                            "FC ACCOUNT",
+                            color = FcAccentLight,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        balance.toString(),
+                        color = Color.White,
+                        fontSize = 42.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("FC", color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    if (role == "father") "Баланс аккаунта Артемия" else "Твои доступные баллы",
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(18.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.15f)))
+                Spacer(Modifier.height(15.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.Home,
+                        contentDescription = null,
+                        tint = FcAccentLight,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text("Персональная система", color = Color.White.copy(alpha = 0.76f), fontSize = 10.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text("Закрытый доступ", color = Color.White.copy(alpha = 0.62f), fontSize = 10.sp)
+                }
             }
-            Text(if (role == "father") "Баланс аккаунта Артемия" else "Твои доступные баллы", color = FcMuted, fontSize = 12.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Персональная система · Закрытый доступ", color = FcMuted, fontSize = 10.sp)
         }
+
+        SectionTitle("Быстрый доступ")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeQuickAction(
+                title = "История",
+                subtitle = "Все операции",
+                icon = Icons.Outlined.History,
+                modifier = Modifier.weight(1f)
+            ) { onSelectTab("history") }
+            HomeQuickAction(
+                title = if (role == "father") "Управление" else "Рулетка",
+                subtitle = if (role == "father") "Панель Макса" else "2 запуска в неделю",
+                icon = if (role == "father") Icons.Outlined.Tune else Icons.Outlined.Casino,
+                modifier = Modifier.weight(1f)
+            ) { onSelectTab(if (role == "father") "admin" else "casino") }
+            HomeQuickAction(
+                title = "Вывод",
+                subtitle = "Заявки и статус",
+                icon = Icons.Outlined.AccountBalanceWallet,
+                modifier = Modifier.weight(1f)
+            ) { onSelectTab("wallet") }
+        }
+
         SectionTitle("Последние операции")
         if (transactions.isEmpty()) EmptyMessage("Операций пока нет")
-        transactions.take(5).forEach { TransactionCard(it) }
+        transactions.take(5).forEach { TransactionCard(it, onProofClick) }
+    }
+}
+
+@Composable
+private fun HomeQuickAction(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = FcSurface,
+        shape = RoundedCornerShape(17.dp),
+        border = BorderStroke(1.dp, FcBorder)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = FcAccentLight,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(FcAccent.copy(alpha = 0.12f))
+                    .padding(7.dp)
+            )
+            Text(
+                title,
+                color = FcText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Text(
+                subtitle,
+                color = FcMuted,
+                fontSize = 9.sp,
+                maxLines = 2,
+                lineHeight = 12.sp
+            )
+        }
     }
 }
 
@@ -484,14 +768,15 @@ private fun HomeScreen(balance: Int, role: String, transactions: List<FcTransact
 private fun HistoryScreen(
     transactions: List<FcTransaction>,
     role: String,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onProofClick: (Long) -> Unit
 ) {
     val recentIDs = transactions.take(10).map { it.id }.toSet()
     ScrollColumn {
         ScreenHeading("История", "Каждое начисление и списание — в одном месте.")
         if (transactions.isEmpty()) EmptyMessage("Операций пока нет")
         transactions.forEach { transaction ->
-            TransactionCard(transaction)
+            TransactionCard(transaction, onProofClick)
             if (role == "artemiy" && transaction.id in recentIDs && transaction.disputeStatus == "none") {
                 FcSecondaryButton("Оспорить операцию") { viewModel.dispute(transaction.id) }
                 Spacer(Modifier.height(6.dp))
@@ -554,7 +839,11 @@ private fun CasinoScreen(state: AppUiState, viewModel: MainViewModel) {
 }
 
 @Composable
-private fun AdminScreen(state: AppUiState, viewModel: MainViewModel) {
+private fun AdminScreen(
+    state: AppUiState,
+    viewModel: MainViewModel,
+    onProofClick: (Long) -> Unit
+) {
     var amount by remember { mutableStateOf("") }
     var reason by remember { mutableStateOf("Хорошая оценка") }
     var proofBytes by remember { mutableStateOf<ByteArray?>(null) }
@@ -627,6 +916,9 @@ private fun AdminScreen(state: AppUiState, viewModel: MainViewModel) {
             SurfaceCard {
                 Text(item.reason, color = FcText, fontWeight = FontWeight.SemiBold)
                 Text("Операция #" + item.id + " · " + item.amount + " FC", color = FcMuted, fontSize = 11.sp)
+                if (item.hasProof) {
+                    FcSecondaryButton("Посмотреть фото") { onProofClick(item.id) }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FcSecondaryButton("Отклонить") { viewModel.resolveDispute(item.id, false) }
                     FcPrimaryButton("Одобрить возврат") { viewModel.resolveDispute(item.id, true) }
@@ -684,7 +976,7 @@ private fun WalletScreen(
 @Composable
 private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     var noteText by remember { mutableStateOf("") }
-    val title = if (state.role == "father") "Папа" else "Артемий"
+    val title = if (state.role == "father") "Макс" else "Артемий"
     ScrollColumn {
         ScreenHeading("Профиль", "Настройки аккаунта и связь внутри системы.")
         SurfaceCard {
@@ -707,7 +999,10 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
 }
 
 @Composable
-private fun TransactionCard(item: FcTransaction) {
+private fun TransactionCard(
+    item: FcTransaction,
+    onProofClick: (Long) -> Unit = {}
+) {
     SurfaceCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -732,7 +1027,25 @@ private fun TransactionCard(item: FcTransaction) {
                 fontWeight = FontWeight.SemiBold
             )
         }
-        if (item.hasProof) Text("Прикреплено фото", color = FcMuted, fontSize = 10.sp)
+        if (item.hasProof) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onProofClick(item.id) }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AttachFile,
+                    contentDescription = null,
+                    tint = FcAccentLight,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text("Открыть фотографию", color = FcAccentLight, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 
@@ -765,7 +1078,7 @@ private fun WithdrawalCard(item: FcWithdrawal) {
 private fun NoteCard(note: FcNote) {
     SurfaceCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (note.senderRole == "father") "Папа" else "Артемий", color = FcAccent, fontWeight = FontWeight.SemiBold)
+            Text(if (note.senderRole == "father") "Макс" else "Артемий", color = FcAccent, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text(note.timestamp, color = FcMuted, fontSize = 9.sp)
         }
@@ -775,9 +1088,15 @@ private fun NoteCard(note: FcNote) {
 
 @Composable
 private fun ScreenHeading(title: String, subtitle: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(title, color = FcText, fontSize = 29.sp, fontWeight = FontWeight.SemiBold)
-        Text(subtitle, color = FcMuted, fontSize = 13.sp)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            title,
+            color = FcText,
+            fontSize = 29.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.5).sp
+        )
+        Text(subtitle, color = FcMuted, fontSize = 13.sp, lineHeight = 19.sp)
     }
 }
 
@@ -796,8 +1115,8 @@ private fun EmptyMessage(message: String) {
 @Composable
 private fun ScrollColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         content = content
     )
 }
@@ -806,8 +1125,9 @@ private fun ScrollColumn(content: @Composable ColumnScope.() -> Unit) {
 private fun SurfaceCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(23.dp),
         colors = CardDefaults.cardColors(containerColor = FcSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(1.dp, FcBorder)
     ) {
         Column(
@@ -832,6 +1152,7 @@ private fun FcTextField(
         label = { Text(label) },
         singleLine = !label.contains("сообщение", ignoreCase = true),
         keyboardOptions = if (isNumber) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
+        shape = RoundedCornerShape(14.dp),
         colors = TextFieldDefaults.colors(
             focusedTextColor = FcText,
             unfocusedTextColor = FcText,
@@ -918,4 +1239,15 @@ private suspend fun readBytes(context: Context, uri: Uri): ByteArray? {
             }
         }.getOrNull()
     }
+}
+
+
+private fun String.isTechnicalTimeout(): Boolean {
+    val normalized = lowercase()
+    return normalized.contains("timeout") ||
+        normalized.contains("timed out") ||
+        normalized.contains("sockettimeoutexception") ||
+        normalized.contains("etimedout") ||
+        normalized.contains("read timed out") ||
+        normalized.contains("connect timed out")
 }

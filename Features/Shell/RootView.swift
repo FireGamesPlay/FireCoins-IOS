@@ -69,6 +69,8 @@ struct RootView: View {
             }
         }
         .background(FCTheme.background)
+        .background(KeyboardDismissGesture())
+        .scrollDismissesKeyboard(.interactively)
         .animation(.easeInOut(duration: 0.2), value: store.activeRole)
         .onChange(of: store.activeRole) { _, role in
             guard let role else {

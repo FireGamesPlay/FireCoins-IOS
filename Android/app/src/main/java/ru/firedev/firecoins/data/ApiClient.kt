@@ -185,8 +185,8 @@ class ApiClient(context: Context) {
         val url = URL("$BASE_URL$path")
         return (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 25_000
+            connectTimeout = 20_000
+            readTimeout = 45_000
             useCaches = false
             setRequestProperty("Accept", "application/json")
             if (authenticated) {
