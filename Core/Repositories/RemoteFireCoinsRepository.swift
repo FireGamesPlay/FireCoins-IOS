@@ -218,6 +218,7 @@ private final class FireCoinsAPIClient {
     private let session: URLSession
     private let decoder: JSONDecoder
     private var tokens: MobileTokens?
+    private var refreshTask: Task<Void, Error>?
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -329,6 +330,20 @@ private final class FireCoinsAPIClient {
     }
 
     private func refreshSession() async throws {
+        if let refreshTask {
+            try await refreshTask.value
+            return
+        }
+
+        let task = Task { @MainActor in
+            try await self.performRefreshSession()
+        }
+        refreshTask = task
+        defer { refreshTask = nil }
+        try await task.value
+    }
+
+    private func performRefreshSession() async throws {
         guard let current = tokens else { throw FireCoinsRemoteError.missingSession }
         let body = try JSONSerialization.data(withJSONObject: ["refresh_token": current.refreshToken])
         do {
@@ -345,10 +360,13 @@ private final class FireCoinsAPIClient {
             )
             try tokenStore.save(refreshed)
             tokens = refreshed
-        } catch {
+        } catch FireCoinsRemoteError.unauthorized {
             tokenStore.clear()
             tokens = nil
             throw FireCoinsRemoteError.unauthorized
+        } catch {
+            // Network/server failures do not destroy a potentially valid refresh token.
+            throw error
         }
     }
 
