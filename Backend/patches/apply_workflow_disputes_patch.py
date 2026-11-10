@@ -388,6 +388,13 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
         logger.exception("Ошибка при обработке оспаривания")
         await safe_edit_message_text(query, "⚠️ Ошибка при обработке оспаривания.")'''
     bot = replace_function(bot, "handle_dispute_response", bot_dispute, expected_async=True)
+    bot = replace_once(
+        bot,
+        '            dispute = " ⚠️" if row[5] else ""\\n',
+        '            dispute_value = int(row[5] or 0)\\n'
+        '            dispute = {1: " ⚠️", 2: " ✅", 3: " ❌"}.get(dispute_value, "")\\n',
+        "bot history dispute status display",
+    )
 
     bot_note = '''async def leave_note_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text: Optional[str] = update.effective_message.text or ""
