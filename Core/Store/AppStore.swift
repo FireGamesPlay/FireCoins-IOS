@@ -18,6 +18,8 @@ final class AppStore: ObservableObject {
     }
 
     func restoreSession() async {
+        isRestoringSession = true
+        sessionError = nil
         defer { isRestoringSession = false }
         guard let sessionManager else {
             activeRole = nil
@@ -39,7 +41,14 @@ final class AppStore: ObservableObject {
         sessionError = nil
         let role = try await sessionManager.signIn(invitationCode: invitationCode)
         activeRole = role
-        refresh()
+        do {
+            try await sessionManager.refreshSnapshot()
+            refresh()
+        } catch {
+            // Authentication has succeeded; do not make the one-time invite unusable
+            // by showing the invitation screen again for a temporary data-fetch error.
+            sessionError = error.localizedDescription
+        }
     }
 
     func signOut() async {
@@ -51,6 +60,7 @@ final class AppStore: ObservableObject {
 
     func refreshRemote() async throws {
         try await sessionManager?.refreshSnapshot()
+        sessionError = nil
         refresh()
     }
 
