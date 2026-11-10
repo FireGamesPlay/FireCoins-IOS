@@ -161,9 +161,14 @@ struct AdminPanelView: View {
                         TransactionRow(transaction: transaction, showDate: true)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if let proof = transaction.proofImageData {
-                                    selectedProofData = proof
-                                    showingProof = true
+                                guard transaction.proofAvailable else { return }
+                                Task { @MainActor in
+                                    do {
+                                        selectedProofData = try await store.loadProof(transactionID: transaction.id)
+                                        showingProof = true
+                                    } catch {
+                                        alertMessage = error.localizedDescription
+                                    }
                                 }
                             }
                         HStack(spacing: 9) {
