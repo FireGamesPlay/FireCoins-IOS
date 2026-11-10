@@ -27,6 +27,12 @@ def _transaction_dict(row):
 async def create_dispute(user, transaction_id_raw):
     return {}
 
+async def create_points_transaction(user, action, amount_raw, reason_raw, proof_file_id=None):
+    reason = str(reason_raw or "").strip()
+    if action == "remove" and reason in PROOF_REQUIRED_REASONS and not proof_file_id:
+        raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")
+    return {}
+
 async def resolve_dispute(user, transaction_id_raw, action):
     return {}
 
@@ -85,6 +91,7 @@ async def show_history():
             self.assertIn("disputed = 3", patched_bot)
             self.assertIn("ORDER BY timestamp DESC, id DESC", patched_bot)
             self.assertIn("transaction_unavailable", changes[api / "services.py"])
+            self.assertIn('{"неубранныетрусы", "оставленныетапки"}', changes[api / "services.py"])
 
             patched_server = changes[api / "server.py"]
             self.assertIn('app.router.add_get("/api/notes", authed(notes))', patched_server)
