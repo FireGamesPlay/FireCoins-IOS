@@ -52,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -408,6 +410,8 @@ private fun AdminScreen(state: AppUiState, viewModel: MainViewModel) {
     var reason by remember { mutableStateOf("Хорошая оценка") }
     var proofBytes by remember { mutableStateOf<ByteArray?>(null) }
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var confirmingReissue by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
@@ -419,6 +423,34 @@ private fun AdminScreen(state: AppUiState, viewModel: MainViewModel) {
 
     ScrollColumn {
         ScreenHeading("Управление", "Администрирование счёта Артемия.")
+        SurfaceCard {
+            SectionTitle("Доступ")
+            Text(
+                "Перевыпуск создаёт новое приглашение для аккаунта администратора и аннулирует предыдущее. Активные сессии не затрагиваются.",
+                color = FcMuted,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            state.reissuedInvitationCode?.let { code ->
+                Text("НОВЫЙ КОД · ПОКАЖЕТСЯ ОДИН РАЗ", color = FcMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+                Text(code, color = FcAccentLight, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                FcSecondaryButton("Скопировать код") {
+                    clipboard.setText(AnnotatedString(code))
+                }
+            }
+            if (confirmingReissue) {
+                Text("Старый код перестанет работать. Продолжить?", color = FcMuted, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FcSecondaryButton("Отмена") { confirmingReissue = false }
+                    FcPrimaryButton("Подтвердить") {
+                        confirmingReissue = false
+                        viewModel.reissueInvitation()
+                    }
+                }
+            } else {
+                FcSecondaryButton("Перевыпустить код") { confirmingReissue = true }
+            }
+        }
         SurfaceCard {
             SectionTitle("Операция")
             FcTextField(amount, { amount = it }, "Количество баллов", isNumber = true)
