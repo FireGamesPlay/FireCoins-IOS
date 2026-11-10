@@ -583,7 +583,7 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
                 )
                 await db.execute(
                     "INSERT INTO transactions (from_id, to_id, type, amount, reason) VALUES (?, ?, ?, ?, ?)",
-                    (target_user_id, target_user_id, "remove", amount, WITHDRAWAL_REASON),
+                    (target_user_id, target_user_id, "remove", amount, "Вывод баллов"),
                 )
                 status_text = f"✅ Запрос вывода #{withdrawal_id} одобрен. Баллы списаны."
                 user_text = f"✅ Ваш запрос на вывод {amount} баллов одобрен и баллы списаны."
