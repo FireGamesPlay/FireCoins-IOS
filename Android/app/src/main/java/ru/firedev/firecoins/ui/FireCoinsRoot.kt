@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Box
@@ -30,8 +31,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -135,14 +134,25 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = FcSurface) {
-                NavItem("home", "Главная", tab == "home") { selectedTab = "home" }
-                NavItem("history", "История", tab == "history") { selectedTab = "history" }
-                NavItem(if (isFather) "admin" else "casino", if (isFather) "Управление" else "Рулетка", tab == "admin" || tab == "casino") {
-                    selectedTab = if (isFather) "admin" else "casino"
+            Surface(color = FcSurface, shadowElevation = 8.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    NavItem("home", "Главная", tab == "home", Modifier.weight(1f)) { selectedTab = "home" }
+                    NavItem("history", "История", tab == "history", Modifier.weight(1f)) { selectedTab = "history" }
+                    NavItem(
+                        if (isFather) "admin" else "casino",
+                        if (isFather) "Управление" else "Рулетка",
+                        tab == "admin" || tab == "casino",
+                        Modifier.weight(1f)
+                    ) {
+                        selectedTab = if (isFather) "admin" else "casino"
+                    }
+                    NavItem("wallet", "Кошелёк", tab == "wallet", Modifier.weight(1f)) { selectedTab = "wallet" }
+                    NavItem("profile", "Профиль", tab == "profile", Modifier.weight(1f)) { selectedTab = "profile" }
                 }
-                NavItem("wallet", "Кошелёк", tab == "wallet") { selectedTab = "wallet" }
-                NavItem("profile", "Профиль", tab == "profile") { selectedTab = "profile" }
             }
         }
     ) { padding ->
@@ -172,14 +182,33 @@ private fun NavItem(
     key: String,
     title: String,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = { Text(title.take(1), fontWeight = FontWeight.Bold) },
-        label = { Text(title, fontSize = 9.sp) }
-    )
+    Surface(
+        modifier = modifier.padding(horizontal = 2.dp).clickable(onClick = onClick),
+        color = if (selected) FcAccent.copy(alpha = 0.13f) else Color.Transparent,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                title.take(1),
+                color = if (selected) FcAccent else FcMuted,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Text(
+                title,
+                color = if (selected) FcAccentLight else FcMuted,
+                fontSize = 9.sp,
+                maxLines = 1
+            )
+        }
+    }
 }
 
 @Composable
