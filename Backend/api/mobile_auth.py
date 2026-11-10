@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterator
 
-from .config import ARTEMIY_ID, FATHER_ID, MOBILE_AUTH_STORE_PATH, get_role
+from .config import ARTEMIY_ID, FATHER_ID, MOBILE_AUTH_STORE_PATH, POINTS_DB_PATH, get_role
 
 
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
@@ -72,6 +72,8 @@ class MobileAuthStore:
 
     def __init__(self, path: Path | str = MOBILE_AUTH_STORE_PATH):
         self.path = Path(path).expanduser().resolve()
+        if self.path == Path(POINTS_DB_PATH).expanduser().resolve():
+            raise ValueError("Mobile auth store must never point to the business SQLite database.")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
 
     def _prepare_directory(self) -> None:
