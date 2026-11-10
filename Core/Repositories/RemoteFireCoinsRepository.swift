@@ -133,6 +133,14 @@ private struct EmptyEnvelopeDTO: Decodable {
     let ok: Bool?
 }
 
+private struct InvitationReissueEnvelopeDTO: Decodable {
+    struct Invitation: Decodable {
+        let role: String
+        let code: String
+    }
+    let invitation: Invitation
+}
+
 private enum FireCoinsRemoteError: LocalizedError {
     case invalidServerResponse
     case unauthorized
@@ -255,6 +263,17 @@ private final class FireCoinsAPIClient {
             throw FireCoinsRemoteError.unsupportedRole
         }
         return role
+    }
+
+    func reissueAdminInvitation() async throws -> String {
+        let response: InvitationReissueEnvelopeDTO = try await post(
+            "/api/mobile/invitations/reissue",
+            payload: [:]
+        )
+        guard response.invitation.role == "father", !response.invitation.code.isEmpty else {
+            throw FireCoinsRemoteError.invalidServerResponse
+        }
+        return response.invitation.code
     }
 
     func restoreSession() async throws -> AppRole? {
@@ -538,6 +557,11 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         await api.signOut()
         currentRole = nil
         state = FireCoinsSnapshot(balance: 0, transactions: [], withdrawals: [], notes: [], casinoRounds: [])
+    }
+
+    func reissueAdminInvitation() async throws -> String {
+        guard currentRole == .father else { throw FireCoinsRemoteError.unauthorized }
+        return try await api.reissueAdminInvitation()
     }
 
     func refreshSnapshot() async throws {
