@@ -1,4 +1,5 @@
 name: Build signed IPA
+# One-time signed build validation trigger; normal builds remain manual.
 
 on:
   workflow_dispatch:
