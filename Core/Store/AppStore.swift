@@ -58,6 +58,14 @@ final class AppStore: ObservableObject {
         snapshot = repository.snapshot()
     }
 
+    func reissueAdminInvitation() async throws -> String {
+        guard activeRole == .father, let sessionManager else {
+            throw FireCoinsRemoteErrorForStore.notConfigured
+        }
+        return try await sessionManager.reissueAdminInvitation()
+    }
+
+
     func refreshRemote() async throws {
         try await sessionManager?.refreshSnapshot()
         sessionError = nil
