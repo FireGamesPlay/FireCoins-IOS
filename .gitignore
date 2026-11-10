@@ -5,3 +5,11 @@ build/
 xcuserdata/
 *.ipa
 *.xcarchive/
+
+# Android signing material — never commit private keys or local signing config
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore.properties
+Android/signing/
