@@ -50,9 +50,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.OutlinedButton
@@ -246,27 +243,35 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = FcSurface,
-                contentColor = FcMuted,
-                tonalElevation = 0.dp,
-                modifier = Modifier.border(
-                    width = 1.dp,
-                    color = FcBorder,
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-                )
+            Surface(
+                color = FcSurface,
+                shadowElevation = 8.dp
             ) {
-                NavItem("home", "Главная", tab == "home") { selectedTab = "home" }
-                NavItem("history", "История", tab == "history") { selectedTab = "history" }
-                NavItem(
-                    if (isFather) "admin" else "casino",
-                    if (isFather) "Управление" else "Рулетка",
-                    tab == "admin" || tab == "casino"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = FcBorder,
+                            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                        )
+                        .padding(horizontal = 5.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    selectedTab = if (isFather) "admin" else "casino"
+                    NavItem("home", "Главная", tab == "home", Modifier.weight(1f)) { selectedTab = "home" }
+                    NavItem("history", "История", tab == "history", Modifier.weight(1f)) { selectedTab = "history" }
+                    NavItem(
+                        if (isFather) "admin" else "casino",
+                        if (isFather) "Управление" else "Рулетка",
+                        tab == "admin" || tab == "casino",
+                        Modifier.weight(1f)
+                    ) {
+                        selectedTab = if (isFather) "admin" else "casino"
+                    }
+                    NavItem("wallet", "Кошелёк", tab == "wallet", Modifier.weight(1f)) { selectedTab = "wallet" }
+                    NavItem("profile", "Профиль", tab == "profile", Modifier.weight(1f)) { selectedTab = "profile" }
                 }
-                NavItem("wallet", "Кошелёк", tab == "wallet") { selectedTab = "wallet" }
-                NavItem("profile", "Профиль", tab == "profile") { selectedTab = "profile" }
             }
         }
     ) { padding ->
@@ -358,6 +363,7 @@ private fun NavItem(
     key: String,
     title: String,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val icon = when (key) {
@@ -368,28 +374,30 @@ private fun NavItem(
         "wallet" -> Icons.Outlined.AccountBalanceWallet
         else -> Icons.Outlined.PersonOutline
     }
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = {
+    Surface(
+        modifier = modifier.padding(horizontal = 2.dp).clickable(onClick = onClick),
+        color = if (selected) FcAccent.copy(alpha = 0.13f) else Color.Transparent,
+        shape = RoundedCornerShape(13.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                modifier = Modifier.size(22.dp)
+                tint = if (selected) FcAccentLight else FcMuted,
+                modifier = Modifier.size(21.dp)
             )
-        },
-        label = {
-            Text(title, fontSize = 10.sp, maxLines = 1)
-        },
-        alwaysShowLabel = true,
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = FcAccentLight,
-            selectedTextColor = FcAccentLight,
-            indicatorColor = FcAccent.copy(alpha = 0.14f),
-            unselectedIconColor = FcMuted,
-            unselectedTextColor = FcMuted
-        )
-    )
+            Text(
+                title,
+                color = if (selected) FcAccentLight else FcMuted,
+                fontSize = 9.sp,
+                maxLines = 1
+            )
+        }
+    }
 }
 
 @Composable
