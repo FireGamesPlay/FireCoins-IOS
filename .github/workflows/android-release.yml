@@ -1,20 +1,12 @@
 name: Build signed Android APK
-# One-time signed build validation trigger; normal builds remain manual.
-
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - v2-development
-    paths:
-      - ".github/workflows/android-release.yml"
 
 permissions:
   contents: read
 
 jobs:
   build-release:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[signed-build]')
     runs-on: ubuntu-latest
     defaults:
       run:
