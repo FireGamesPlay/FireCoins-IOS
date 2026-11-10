@@ -518,6 +518,95 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
         logger.exception("Ошибка при обработке оспаривания")
         await safe_edit_message_text(query, "⚠️ Ошибка при обработке оспаривания.")'''
     bot = replace_function(bot, "handle_dispute_response", bot_dispute, expected_async=True)
+
+    bot_withdraw = '''async def handle_withdraw_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != FATHER_ID:
+        await safe_edit_message_text(query, "⛔️ Нет прав на это действие.")
+        return
+
+    data = query.data or ""
+    parts = data.split("_")
+    if len(parts) != 3 or parts[0] != "withdraw" or parts[1] not in {"approve", "reject"}:
+        await safe_edit_message_text(query, "❌ Некорректные данные запроса.")
+        return
+
+    action = parts[1]
+    try:
+        withdrawal_id = int(parts[2])
+        if withdrawal_id <= 0:
+            raise ValueError
+    except ValueError:
+        await safe_edit_message_text(query, "❌ Некорректный идентификатор заявки.")
+        return
+
+    try:
+        async with aiosqlite.connect("points.db") as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT user_id, amount, status FROM withdrawals WHERE id = ?",
+                (withdrawal_id,),
+            )
+            row = await cursor.fetchone()
+            if not row or str(row[2]) != "pending":
+                await db.rollback()
+                await safe_edit_message_text(query, "❌ Заявка уже обработана или не найдена.")
+                return
+
+            target_user_id = int(row[0])
+            amount = int(row[1])
+            if action == "approve":
+                await ensure_balance(db, target_user_id)
+                cursor = await db.execute(
+                    "SELECT balance FROM balance WHERE user_id = ?",
+                    (target_user_id,),
+                )
+                balance_row = await cursor.fetchone()
+                if not balance_row or int(balance_row[0]) < amount:
+                    await db.rollback()
+                    await safe_edit_message_text(query, f"❌ Недостаточно баллов для вывода ({amount}).")
+                    return
+
+                cursor = await db.execute(
+                    "UPDATE withdrawals SET status = 'approved' WHERE id = ? AND status = 'pending'",
+                    (withdrawal_id,),
+                )
+                if cursor.rowcount != 1:
+                    await db.rollback()
+                    await safe_edit_message_text(query, "❌ Заявка уже обработана.")
+                    return
+
+                await db.execute(
+                    "UPDATE balance SET balance = balance - ? WHERE user_id = ?",
+                    (amount, target_user_id),
+                )
+                await db.execute(
+                    "INSERT INTO transactions (from_id, to_id, type, amount, reason) VALUES (?, ?, ?, ?, ?)",
+                    (target_user_id, target_user_id, "remove", amount, WITHDRAWAL_REASON),
+                )
+                status_text = f"✅ Запрос вывода #{withdrawal_id} одобрен. Баллы списаны."
+                user_text = f"✅ Ваш запрос на вывод {amount} баллов одобрен и баллы списаны."
+            else:
+                cursor = await db.execute(
+                    "UPDATE withdrawals SET status = 'rejected' WHERE id = ? AND status = 'pending'",
+                    (withdrawal_id,),
+                )
+                if cursor.rowcount != 1:
+                    await db.rollback()
+                    await safe_edit_message_text(query, "❌ Заявка уже обработана.")
+                    return
+                status_text = f"❌ Запрос вывода #{withdrawal_id} отклонён."
+                user_text = f"❌ Ваш запрос на вывод {amount} баллов отклонён."
+
+            await db.commit()
+
+        await safe_edit_message_text(query, status_text)
+        await context.bot.send_message(chat_id=target_user_id, text=user_text)
+    except Exception:
+        logger.exception("Ошибка при обработке запроса на вывод")
+        await safe_edit_message_text(query, "⚠️ Ошибка при обработке запроса.")'''
+    bot = replace_function(bot, "handle_withdraw_response", bot_withdraw, expected_async=True)
     bot_dispute_start = '''async def dispute_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
