@@ -2,7 +2,7 @@
 
 This directory contains additive API modules, guarded patch scripts and isolated tests for the existing Fire Coins VPS.
 
-**Do not run the patch scripts on production until the bot token has been rotated and the service environment has been checked.** These files do not deploy themselves and do not restart services.
+**These files do not deploy themselves and do not restart services.** The existing bot token appeared in a development terminal transcript. The owner has chosen to retain it for now; that leaves residual credential-exposure risk. This rollout preserves the existing token without repeating it in source code or chat.
 
 ## Production invariants
 
@@ -15,11 +15,18 @@ This directory contains additive API modules, guarded patch scripts and isolated
 
 ## Prerequisites
 
-1. Revoke the Telegram bot token that was exposed in development, if it has not already been revoked.
-2. Create a replacement token in BotFather. Do not send it in chat, paste it into Git, or put it in a command that enters shell history.
-3. Configure TG_BOT_TOKEN securely for both the API process and tgbot.service. The API currently loads webapp/.env; the bot process must receive the same variable through its systemd environment. Verify the actual service definitions before choosing an EnvironmentFile or systemd drop-in.
-4. Confirm that POINTS_DB_PATH still resolves to /root/ScoringSystemBot/points.db.
-5. Ensure a database backup and PRAGMA integrity_check have been completed separately.
+1. Verify that /root/ScoringSystemBot/webapp/.env contains a non-empty TG_BOT_TOKEN without printing or copying its value. The current production file already contains this setting.
+2. The API loads webapp/.env through api/config.py. The current tgbot.service does not load that file, so after reviewing the unit create a systemd drop-in containing:
+   
+   ~~~ini
+   [Service]
+   EnvironmentFile=/root/ScoringSystemBot/webapp/.env
+   ~~~
+
+   This keeps the existing token unchanged while allowing Bot.py to read it from the process environment. Do not print the EnvironmentFile contents or systemd environment values.
+3. Confirm that POINTS_DB_PATH still resolves to /root/ScoringSystemBot/points.db.
+4. Ensure a database backup and PRAGMA integrity_check have been completed separately.
+5. Do not revoke or rotate the token as part of this rollout unless the owner separately chooses to do so. The decision to retain it does not eliminate the residual exposure risk.
 
 ## Get the V2 files
 
