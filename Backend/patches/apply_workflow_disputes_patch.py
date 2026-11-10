@@ -111,6 +111,61 @@ def build_changes() -> dict[Path, str]:
     }'''
     services = replace_function(services, "_transaction_dict", transaction_dict, expected_async=False)
 
+    create_dispute = '''async def create_dispute(user: MiniAppUser, transaction_id_raw: Any) -> dict[str, Any]:
+    if user.role != "artemiy":
+        raise ApiError("Only Artemiy can dispute transactions.", status=403, code="forbidden")
+
+    transaction_id = _validate_amount(transaction_id_raw)
+    async with db_connection() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        cursor = await db.execute(
+            """
+            SELECT id
+            FROM transactions
+            WHERE id = ?
+              AND to_id = ?
+              AND disputed = 0
+              AND id IN (
+                  SELECT id
+                  FROM transactions
+                  WHERE to_id = ?
+                  ORDER BY timestamp DESC, id DESC
+                  LIMIT 10
+              )
+            """,
+            (transaction_id, ARTEMIY_ID, ARTEMIY_ID),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise ApiError(
+                "Transaction is not eligible for a dispute.",
+                status=404,
+                code="transaction_unavailable",
+            )
+
+        cursor = await db.execute(
+            "UPDATE transactions SET disputed = 1 WHERE id = ? AND to_id = ? AND disputed = 0",
+            (transaction_id, ARTEMIY_ID),
+        )
+        if cursor.rowcount != 1:
+            raise ApiError("This transaction is already disputed.", status=409, code="already_disputed")
+        await db.commit()
+
+    await _notify(
+        FATHER_ID,
+        f"Артемий оспорил транзакцию #{transaction_id}. Что сделать?",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "Принять", "callback_data": f"approve_{transaction_id}"},
+                    {"text": "Отклонить", "callback_data": f"reject_{transaction_id}"},
+                ]
+            ]
+        },
+    )
+    return {"id": transaction_id, "status": "pending"}'''
+    services = replace_function(services, "create_dispute", create_dispute, expected_async=True)
+
     resolve_dispute = '''async def resolve_dispute(user: MiniAppUser, transaction_id_raw: Any, action: str) -> dict[str, Any]:
     if user.role != "father":
         raise ApiError("Only Father can resolve disputes.", status=403, code="forbidden")
@@ -439,6 +494,79 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
         logger.exception("Ошибка при обработке оспаривания")
         await safe_edit_message_text(query, "⚠️ Ошибка при обработке оспаривания.")'''
     bot = replace_function(bot, "handle_dispute_response", bot_dispute, expected_async=True)
+    bot_dispute_start = '''async def dispute_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ARTEMIY_ID:
+        await query.answer("Нет прав на это действие.", show_alert=True)
+        return
+
+    data = query.data or ""
+    if not data.startswith("dispute_"):
+        await query.answer("Некорректные данные.", show_alert=True)
+        return
+
+    try:
+        transaction_id = int(data.split("_", 1)[1])
+    except (TypeError, ValueError):
+        await safe_edit_message_text(query, "❌ Некорректный идентификатор транзакции.")
+        return
+
+    try:
+        async with aiosqlite.connect("points.db") as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT id
+                FROM transactions
+                WHERE id = ?
+                  AND to_id = ?
+                  AND disputed = 0
+                  AND id IN (
+                      SELECT id
+                      FROM transactions
+                      WHERE to_id = ?
+                      ORDER BY timestamp DESC, id DESC
+                      LIMIT 10
+                  )
+                """,
+                (transaction_id, ARTEMIY_ID, ARTEMIY_ID),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                await db.rollback()
+                await safe_edit_message_text(query, "❌ Эту транзакцию уже нельзя оспорить.")
+                return
+
+            cursor = await db.execute(
+                "UPDATE transactions SET disputed = 1 WHERE id = ? AND to_id = ? AND disputed = 0",
+                (transaction_id, ARTEMIY_ID),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                await safe_edit_message_text(query, "❌ Эта транзакция уже оспаривается.")
+                return
+            await db.commit()
+    except Exception:
+        logger.exception("Ошибка при установке disputed")
+        await safe_edit_message_text(query, "⚠️ Ошибка при отправке запроса на оспаривание.")
+        return
+
+    await safe_edit_message_text(query, f"⚠️ Запрос на оспаривание транзакции #{transaction_id} отправлен отцу.")
+    try:
+        await context.bot.send_message(
+            chat_id=FATHER_ID,
+            text=f"⚠️ Артемий оспорил транзакцию #{transaction_id}. Что сделать?",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Принять", callback_data=f"approve_{transaction_id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{transaction_id}"),
+                ]
+            ]),
+        )
+    except Exception:
+        logger.exception("Не удалось отправить сообщение отцу об оспаривании")'''
+    bot = replace_function(bot, "dispute_callback_handler", bot_dispute_start, expected_async=True)
     bot = replace_once(
         bot,
         '            dispute = " ⚠️" if row[5] else ""\n',
