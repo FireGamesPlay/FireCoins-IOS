@@ -1,16 +1,16 @@
 name: Build signed IPA
 on:
+  push:
+    branches:
+      - v2-development
+    paths:
+      - "App/**"
+      - "Core/**"
+      - "Features/**"
+      - "Assets.xcassets/**"
+      - "FireCoins.xcodeproj/**"
+      - ".github/workflows/build-ipa.yml"
   workflow_dispatch:
-    inputs:
-      export_method:
-        description: Provisioning profile type
-        required: true
-        type: choice
-        default: development
-        options:
-          - development
-          - ad-hoc
-          - app-store-connect
 
 jobs:
   build:
@@ -120,8 +120,10 @@ jobs:
               method = "ad-hoc"
           else:
               method = "app-store-connect"
+          if method == "development":
+              raise SystemExit("A Development provisioning profile cannot be used for a release IPA. Configure an Ad Hoc or App Store Connect distribution profile.")
           print("Provisioning profile matches the P12 certificate.")
-          print("Detected provisioning profile type:", method)
+          print("Detected release provisioning profile type:", method)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("export_method=" + method + "\n")
           PY
@@ -159,7 +161,7 @@ jobs:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           TEAM_ID: ${{ steps.signing.outputs.team_id }}
           SIGNING_CERT_SHA1: ${{ steps.signing.outputs.signing_cert_sha1 }}
-          EXPORT_METHOD: ${{ inputs.export_method || steps.signing.outputs.export_method }}
+          EXPORT_METHOD: ${{ steps.signing.outputs.export_method }}
         run: |
           set -euo pipefail
           python3 - <<'PY'

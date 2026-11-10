@@ -6,7 +6,15 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,8 +58,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -61,6 +72,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -85,6 +97,26 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     val state = viewModel.state.value
     var selectedTab by remember { mutableStateOf("home") }
     val snackbarHost = remember { SnackbarHostState() }
+    var welcomedRole by remember { mutableStateOf<String?>(null) }
+    var showWelcome by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.role, state.isLoading) {
+        val currentRole = state.role
+        if (currentRole == null) {
+            welcomedRole = null
+            showWelcome = false
+        } else if (!state.isLoading && welcomedRole != currentRole) {
+            welcomedRole = currentRole
+            showWelcome = true
+            delay(2_900)
+            showWelcome = false
+        }
+    }
+
+    if (showWelcome && state.role != null) {
+        FireCoinsWelcomeScreen(role = state.role, onContinue = { showWelcome = false })
+        return
+    }
 
     LaunchedEffect(state.message, state.error, state.role) {
         // Keep login/recovery errors on the invitation screen; SnackbarHost exists only after login.
@@ -218,6 +250,123 @@ private fun NavItem(
                 fontSize = 9.sp,
                 maxLines = 1
             )
+        }
+    }
+}
+
+@Composable
+private fun FireCoinsWelcomeScreen(
+    role: String,
+    onContinue: () -> Unit
+) {
+    var revealed by remember { mutableStateOf(false) }
+    val entry by animateFloatAsState(
+        targetValue = if (revealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 850),
+        label = "welcomeEntrance"
+    )
+    val pulseTransition = rememberInfiniteTransition(label = "welcomePulse")
+    val pulse by pulseTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_100),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "haloScale"
+    )
+
+    LaunchedEffect(Unit) { revealed = true }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF17110D), FcBackground, Color(0xFF070809))
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(252.dp)
+                .graphicsLayer { scaleX = pulse; scaleY = pulse; alpha = 0.58f }
+                .border(1.dp, FcAccent.copy(alpha = 0.32f), CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .size(212.dp)
+                .graphicsLayer { scaleX = 1.08f / pulse; scaleY = 1.08f / pulse; alpha = 0.34f }
+                .border(1.dp, FcAccentLight.copy(alpha = 0.28f), CircleShape)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 34.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(id = ru.firedev.firecoins.R.drawable.firecoins_welcome),
+                contentDescription = "Логотип Fire Coins",
+                modifier = Modifier
+                    .size(196.dp)
+                    .graphicsLayer {
+                        alpha = entry
+                        scaleX = 0.70f + 0.30f * entry
+                        scaleY = 0.70f + 0.30f * entry
+                        rotationZ = -12f * (1f - entry)
+                    }
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "FIRE COINS",
+                color = FcAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = entry
+                    translationY = 12.dp.toPx() * (1f - entry)
+                }
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                if (role == "father") "Привет, Макс!" else "Привет, Артемий!",
+                color = FcText,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.8).sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = entry
+                    translationY = 18.dp.toPx() * (1f - entry)
+                }
+            )
+            Spacer(Modifier.height(9.dp))
+            Text(
+                if (role == "father") "АДМИНИСТРАТОР" else "ЛИЧНЫЙ КАБИНЕТ",
+                color = FcMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 2.5.sp,
+                modifier = Modifier.graphicsLayer { alpha = entry }
+            )
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .padding(top = 34.dp)
+                    .fillMaxWidth(0.72f)
+                    .graphicsLayer { alpha = entry },
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = FcAccent,
+                    contentColor = Color(0xFF211A14)
+                )
+            ) {
+                Text("Продолжить", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
