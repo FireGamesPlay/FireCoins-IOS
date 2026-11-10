@@ -11,3 +11,12 @@ protocol FireCoinsRepository: AnyObject {
     func playCasino(bet: Int) async throws -> CasinoRound
     func sendNote(from role: AppRole, text: String) async throws
 }
+
+@MainActor
+protocol FireCoinsSessionManaging: AnyObject {
+    func signIn(invitationCode: String) async throws -> AppRole
+    func restoreSession() async throws -> AppRole?
+    func signOut() async
+    func refreshSnapshot() async throws
+    func loadProof(transactionID: UUID) async throws -> Data
+}
