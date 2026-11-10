@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -83,16 +84,25 @@ def build_changes() -> dict[Path, str]:
         "services workflow store import",
     )
 
-    services = replace_once(
-        services,
-        '    if action == "remove" and reason in PROOF_REQUIRED_REASONS and not proof_file_id:\n'
-        '        raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")\n',
-        '    normalized_reason = "".join(character.casefold() for character in reason if character.isalnum())\n'
-        '    proof_required_reason_keys = {"неубранныетрусы", "оставленныетапки"}\n'
-        '    if action == "remove" and normalized_reason in proof_required_reason_keys and not proof_file_id:\n'
-        '        raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")\n',
-        "proof requirement independent of display emoji",
+    proof_reason_pattern = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)if action == "remove" and reason in PROOF_REQUIRED_REASONS and not proof_file_id:\r?\n'
+        r'(?P=indent)    raise ApiError\("Photo proof is required for this reason\.", status=400, code="proof_required"\)$'
     )
+    services, proof_reason_matches = proof_reason_pattern.subn(
+        lambda match: (
+            f'{match.group("indent")}normalized_reason = "".join(character.casefold() for character in reason if character.isalnum())\n'
+            f'{match.group("indent")}proof_required_reason_keys = {{"неубранныетрусы", "оставленныетапки"}}\n'
+            f'{match.group("indent")}if action == "remove" and normalized_reason in proof_required_reason_keys and not proof_file_id:\n'
+            f'{match.group("indent")}    raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")'
+        ),
+        services,
+        count=1,
+    )
+    if proof_reason_matches != 1:
+        raise SystemExit(
+            "Could not locate exactly one proof-required reason check. "
+            "No server files have been changed."
+        )
 
     transaction_dict = '''def _transaction_dict(row: aiosqlite.Row) -> dict[str, Any]:
     amount = int(row["amount"])
