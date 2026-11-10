@@ -146,7 +146,7 @@ struct TransactionRow: View {
                 Text("\(transaction.kind.symbol)\(transaction.amount)")
                     .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(amountColor)
-                if transaction.proofImageData != nil {
+                if transaction.proofAvailable {
                     Image(systemName: "paperclip")
                         .font(.system(size: 10))
                         .foregroundStyle(FCTheme.muted)

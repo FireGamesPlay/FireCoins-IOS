@@ -1,20 +1,5 @@
 import SwiftUI
 
-// Два локальных приглашения для прототипа. Перед релизом проверку нужно перенести на сервер.
-enum InviteCodeConfiguration {
-    static let artemiyCode = "FC-7KQ9-MX4P-2VND"
-    static let fatherCode = "FC-3X9M-L2CW-8RHT"
-
-    static func role(for input: String) -> AppRole? {
-        let normalized = input.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        switch normalized {
-        case artemiyCode: return .artemiy
-        case fatherCode: return .father
-        default: return nil
-        }
-    }
-}
-
 enum FCTheme {
     static let background = Color(hex: 0x0C0E11)
     static let surface = Color(hex: 0x15191E)

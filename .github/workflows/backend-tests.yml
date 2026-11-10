@@ -1,0 +1,32 @@
+name: Backend tests
+
+on:
+  push:
+    branches:
+      - v2-development
+    paths:
+      - "Backend/**"
+      - ".github/workflows/backend-tests.yml"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile backend and patch scripts
+        run: python -m compileall -q Backend
+
+      - name: Run backend tests
+        env:
+          PYTHONPATH: Backend
+        run: python -m unittest discover -s Backend/tests -v
