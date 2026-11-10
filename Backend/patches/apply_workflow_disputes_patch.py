@@ -324,14 +324,6 @@ def build_changes() -> dict[Path, str]:
         raise ApiError("Access denied.", status=403, code="forbidden")
 
     try:
-        await telegram.send_message(
-            chat_id=target_id,
-            text=f"Новая заметка:\\n\\n{note_text}\\n\\n— От: {user.display_name}",
-        )
-    except TelegramApiError as exc:
-        raise ApiError("Telegram could not deliver this note.", status=502, code="telegram_error") from exc
-
-    try:
         note = await __import__("asyncio").to_thread(
             workflow_store.append_note,
             user.id,
@@ -342,7 +334,17 @@ def build_changes() -> dict[Path, str]:
         )
     except (OSError, RuntimeError, ValueError) as exc:
         logger.exception("Could not persist Fire Coins note")
-        raise ApiError("Note was delivered but could not be added to the shared history.", status=503, code="note_persistence_failed") from exc
+        raise ApiError("Note could not be saved to shared history.", status=503, code="note_persistence_failed") from exc
+
+    telegram_notified = True
+    try:
+        await telegram.send_message(
+            chat_id=target_id,
+            text=f"Новая заметка:\\n\\n{note_text}\\n\\n— От: {user.display_name}",
+        )
+    except TelegramApiError:
+        telegram_notified = False
+        logger.exception("Note saved, but Telegram notification failed")
 
     return {
         "id": note["id"],
@@ -353,6 +355,7 @@ def build_changes() -> dict[Path, str]:
         "text": note["text"],
         "timestamp": dt.datetime.fromtimestamp(note["created_at"], tz=dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "delivered": True,
+        "telegram_notified": telegram_notified,
     }
 
 
@@ -622,14 +625,24 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
         return ConversationHandler.END
 
     sender_name = update.effective_user.first_name or ("Папа" if role == "father" else "Артемий")
-    note_message = f"📝 Новая заметка:\\n\\n{note_text}\\n\\n— От: {sender_name}"
-
     try:
-        await context.bot.send_message(chat_id=target_id, text=note_message)
         workflow_store.append_note(sender_id, role, target_id, sender_name, note_text)
     except Exception:
-        logger.exception("Не удалось доставить или сохранить заметку")
-        await update.effective_message.reply_text("⚠️ Ошибка при отправке заметки.", reply_markup=get_main_menu(role))
+        logger.exception("Не удалось сохранить заметку")
+        await update.effective_message.reply_text("⚠️ Не удалось сохранить заметку.", reply_markup=get_main_menu(role))
+        return ConversationHandler.END
+
+    try:
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"📝 Новая заметка:\\n\\n{note_text}\\n\\n— От: {sender_name}",
+        )
+    except Exception:
+        logger.exception("Заметка сохранена, но Telegram-уведомление не доставлено")
+        await update.effective_message.reply_text(
+            "✅ Заметка сохранена. Telegram-уведомление не доставлено.",
+            reply_markup=get_main_menu(role),
+        )
         return ConversationHandler.END
 
     await update.effective_message.reply_text("✅ Заметка отправлена.", reply_markup=get_main_menu(role))
