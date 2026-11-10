@@ -16,7 +16,8 @@ This directory contains additive API modules, guarded patch scripts and isolated
 ## Prerequisites
 
 1. Verify that /root/ScoringSystemBot/webapp/.env contains a non-empty TG_BOT_TOKEN without printing or copying its value. The current production file already contains this setting.
-2. The API loads webapp/.env through api/config.py. The current tgbot.service does not load that file, so after reviewing the unit create a systemd drop-in containing:
+2. Before exposing the file to the bot service, restrict it to root: `chmod 600 /root/ScoringSystemBot/webapp/.env`. The current file is more permissive than necessary.
+3. The API loads webapp/.env through api/config.py. The current tgbot.service does not load that file, so after reviewing the unit create a systemd drop-in containing:
    
    ~~~ini
    [Service]
@@ -24,9 +25,9 @@ This directory contains additive API modules, guarded patch scripts and isolated
    ~~~
 
    This keeps the existing token unchanged while allowing Bot.py to read it from the process environment. Do not print the EnvironmentFile contents or systemd environment values.
-3. Confirm that POINTS_DB_PATH still resolves to /root/ScoringSystemBot/points.db.
-4. Ensure a database backup and PRAGMA integrity_check have been completed separately.
-5. Do not revoke or rotate the token as part of this rollout unless the owner separately chooses to do so. The decision to retain it does not eliminate the residual exposure risk.
+4. Confirm that POINTS_DB_PATH still resolves to /root/ScoringSystemBot/points.db.
+5. Ensure a database backup and PRAGMA integrity_check have been completed separately.
+6. Do not revoke or rotate the token as part of this rollout unless the owner separately chooses to do so. The decision to retain it does not eliminate the residual exposure risk.
 
 ## Get the V2 files
 
