@@ -16,6 +16,7 @@ struct CasinoView: View {
     var body: some View {
         ZStack {
             FCTheme.background.ignoresSafeArea()
+                .onTapGesture { KeyboardDismiss.dismiss() }
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 5) {
