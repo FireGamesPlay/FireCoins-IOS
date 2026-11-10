@@ -1,6 +1,18 @@
 import SwiftUI
 import UIKit
 
+
+enum KeyboardDismiss {
+    static func dismiss() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+}
+
 struct FireCoinsMark: View {
     var size: CGFloat = 42
 
