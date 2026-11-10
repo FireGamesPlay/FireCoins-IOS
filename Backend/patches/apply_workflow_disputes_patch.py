@@ -390,9 +390,9 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
     bot = replace_function(bot, "handle_dispute_response", bot_dispute, expected_async=True)
     bot = replace_once(
         bot,
-        '            dispute = " ⚠️" if row[5] else ""\\n',
-        '            dispute_value = int(row[5] or 0)\\n'
-        '            dispute = {1: " ⚠️", 2: " ✅", 3: " ❌"}.get(dispute_value, "")\\n',
+        '            dispute = " ⚠️" if row[5] else ""\n',
+        '            dispute_value = int(row[5] or 0)\n'
+        '            dispute = {1: " ⚠️", 2: " ✅", 3: " ❌"}.get(dispute_value, "")\n',
         "bot history dispute status display",
     )
 
