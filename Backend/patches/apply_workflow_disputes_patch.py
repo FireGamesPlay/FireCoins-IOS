@@ -83,6 +83,17 @@ def build_changes() -> dict[Path, str]:
         "services workflow store import",
     )
 
+    services = replace_once(
+        services,
+        '    if action == "remove" and reason in PROOF_REQUIRED_REASONS and not proof_file_id:\n'
+        '        raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")\n',
+        '    normalized_reason = "".join(character.casefold() for character in reason if character.isalnum())\n'
+        '    proof_required_reason_keys = {"неубранныетрусы", "оставленныетапки"}\n'
+        '    if action == "remove" and normalized_reason in proof_required_reason_keys and not proof_file_id:\n'
+        '        raise ApiError("Photo proof is required for this reason.", status=400, code="proof_required")\n',
+        "proof requirement independent of display emoji",
+    )
+
     transaction_dict = '''def _transaction_dict(row: aiosqlite.Row) -> dict[str, Any]:
     amount = int(row["amount"])
     trans_type = str(row["type"])
