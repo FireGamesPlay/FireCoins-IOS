@@ -266,12 +266,12 @@ private final class FireCoinsAPIClient {
                 throw FireCoinsRemoteError.unsupportedRole
             }
             return role
+        } catch FireCoinsRemoteError.server(let message) {
+            // Keep a possibly valid refresh token when the server is temporarily unavailable.
+            throw FireCoinsRemoteError.server(message)
         } catch {
             tokenStore.clear()
             tokens = nil
-            if case FireCoinsRemoteError.server = error {
-                throw error
-            }
             return nil
         }
     }
@@ -521,7 +521,6 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
     func signIn(invitationCode: String) async throws -> AppRole {
         let role = try await api.signIn(invitationCode: invitationCode)
         currentRole = role
-        try await refreshSnapshot()
         return role
     }
 
