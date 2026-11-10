@@ -84,10 +84,13 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     var selectedTab by remember { mutableStateOf("home") }
     val snackbarHost = remember { SnackbarHostState() }
 
-    LaunchedEffect(state.message, state.error) {
-        val message = state.error ?: state.message
-        if (!message.isNullOrBlank()) snackbarHost.showSnackbar(message)
-        viewModel.clearMessage()
+    LaunchedEffect(state.message, state.error, state.role) {
+        // Keep login/recovery errors on the invitation screen; SnackbarHost exists only after login.
+        if (state.role != null) {
+            val message = state.error ?: state.message
+            if (!message.isNullOrBlank()) snackbarHost.showSnackbar(message)
+            viewModel.clearMessage()
+        }
     }
 
     if (state.role == null) {
@@ -98,6 +101,12 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             ) {
                 CircularProgressIndicator(color = FcAccent)
             }
+        } else if (state.sessionRecovery) {
+            SessionRecoveryScreen(
+                message = state.error ?: "Сохранённая сессия пока недоступна.",
+                onRetry = viewModel::retrySession,
+                onReset = viewModel::logout
+            )
         } else {
             InvitationScreen(
                 isLoading = state.isLoading,
@@ -208,6 +217,42 @@ private fun NavItem(
                 maxLines = 1
             )
         }
+    }
+}
+
+@Composable
+private fun SessionRecoveryScreen(
+    message: String,
+    onRetry: () -> Unit,
+    onReset: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(FcBackground).padding(horizontal = 26.dp, vertical = 32.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            modifier = Modifier.size(58.dp),
+            shape = RoundedCornerShape(19.dp),
+            color = FcAccent
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text("F", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF211A14))
+            }
+        }
+        Spacer(Modifier.height(28.dp))
+        Text("Не удалось подключиться", color = FcText, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
+        Text(message, color = FcMuted, fontSize = 13.sp, lineHeight = 19.sp)
+        Spacer(Modifier.height(20.dp))
+        FcPrimaryButton("Повторить подключение", action = onRetry)
+        TextButton(onClick = onReset) {
+            Text("Сбросить сессию и войти заново", color = FcAccentLight)
+        }
+        Text(
+            "Сохранённый код приглашения не требуется повторно вводить при временном сбое сети.",
+            color = FcMuted,
+            fontSize = 10.sp
+        )
     }
 }
 
