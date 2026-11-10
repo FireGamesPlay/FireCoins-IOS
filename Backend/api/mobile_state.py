@@ -125,9 +125,10 @@ class MobileStateStore:
                 dict(note)
                 for note in state["notes"]
                 if isinstance(note, dict)
-                and int(note.get("sender_id", 0)) in {int(user_id), int(note.get("recipient_id", 0))}
-                and int(note.get("recipient_id", 0)) == int(user_id)
-                or isinstance(note, dict) and int(note.get("sender_id", 0)) == int(user_id)
+                and (
+                    int(note.get("sender_id", 0)) == int(user_id)
+                    or int(note.get("recipient_id", 0)) == int(user_id)
+                )
             ]
         notes.sort(key=lambda item: int(item.get("timestamp", 0)), reverse=True)
         return notes[:limit]
