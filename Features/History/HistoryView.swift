@@ -44,14 +44,9 @@ struct HistoryView: View {
                                 )
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    guard transaction.proofAvailable else { return }
-                                    Task { @MainActor in
-                                        do {
-                                            selectedProof = try await store.loadProof(transactionID: transaction.id)
-                                            showingProof = true
-                                        } catch {
-                                            alertMessage = error.localizedDescription
-                                        }
+                                    if let proof = transaction.proofImageData {
+                                        selectedProof = proof
+                                        showingProof = true
                                     }
                                 }
                                 if transaction.id != filteredTransactions.last?.id {
