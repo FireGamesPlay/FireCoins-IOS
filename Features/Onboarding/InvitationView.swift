@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct InvitationView: View {
-    let onUnlock: (String) async throws -> Void
+    let onUnlock: (AppRole) -> Void
     @State private var invitationCode = ""
     @State private var errorMessage: String?
-    @State private var isSubmitting = false
     @FocusState private var isCodeFocused: Bool
 
     var body: some View {
@@ -49,7 +48,7 @@ struct InvitationView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "key.horizontal")
                             .foregroundStyle(FCTheme.accent)
-                        TextField("FC-XXXX-XXXX-XXXX-XXXX", text: $invitationCode)
+                        TextField("FC-XXXX-XXXX-XXXX", text: $invitationCode)
                             .font(.system(size: 15, weight: .semibold, design: .monospaced))
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
@@ -69,7 +68,7 @@ struct InvitationView: View {
                     }
                 }
 
-                PrimaryActionButton(title: isSubmitting ? "Проверяем…" : "Продолжить", systemImage: "arrow.right", disabled: isSubmitting, action: unlock)
+                PrimaryActionButton(title: "Продолжить", systemImage: "arrow.right", action: unlock)
                     .padding(.top, 17)
 
                 Spacer()
@@ -87,21 +86,12 @@ struct InvitationView: View {
     }
 
     private func unlock() {
-        let code = invitationCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !code.isEmpty else {
-            errorMessage = "Введите персональный код приглашения."
+        guard let role = InviteCodeConfiguration.role(for: invitationCode) else {
+            errorMessage = "Код не распознан. Проверьте символы и попробуйте ещё раз."
             return
         }
         errorMessage = nil
         isCodeFocused = false
-        isSubmitting = true
-        Task { @MainActor in
-            defer { isSubmitting = false }
-            do {
-                try await onUnlock(code)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
+        onUnlock(role)
     }
 }
