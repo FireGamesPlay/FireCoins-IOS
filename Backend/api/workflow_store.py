@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Any, Iterator
 
+from .config import ARTEMIY_ID, FATHER_ID, POINTS_DB_PATH
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_STORE_PATH = Path(
@@ -27,6 +29,8 @@ class WorkflowStore:
 
     def __init__(self, path: Path | str = WORKFLOW_STORE_PATH):
         self.path = Path(path).expanduser().resolve()
+        if self.path == Path(POINTS_DB_PATH).expanduser().resolve():
+            raise ValueError("Workflow store must never point to the business SQLite database.")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
 
     def _prepare(self) -> None:
@@ -99,6 +103,11 @@ class WorkflowStore:
             raise ValueError("Note text is too long.")
         if sender_role not in {"father", "artemiy"}:
             raise ValueError("Unknown note sender role.")
+        allowed_ids = {int(FATHER_ID), int(ARTEMIY_ID)}
+        if int(sender_id) not in allowed_ids or int(recipient_id) not in allowed_ids:
+            raise ValueError("Notes are restricted to the two configured accounts.")
+        if int(sender_id) == int(recipient_id):
+            raise ValueError("A note must be addressed to the other account.")
 
         now = int(time.time())
         note = {
