@@ -59,6 +59,9 @@ TOKEN = os.environ.get("TG_BOT_TOKEN", "old-token")
 async def handle_dispute_response(update, context):
     pass
 
+async def handle_withdraw_response(update, context):
+    pass
+
 async def dispute_callback_handler(update, context):
     pass
 
@@ -89,6 +92,8 @@ async def show_history():
             self.assertIn("workflow_store.append_note", patched_bot)
             self.assertIn("disputed = 2", patched_bot)
             self.assertIn("disputed = 3", patched_bot)
+            self.assertIn("BEGIN IMMEDIATE", patched_bot)
+            self.assertIn("UPDATE withdrawals SET status = 'approved' WHERE id = ? AND status = 'pending'", patched_bot)
             self.assertIn("ORDER BY timestamp DESC, id DESC", patched_bot)
             self.assertIn("transaction_unavailable", changes[api / "services.py"])
             self.assertIn('{"неубранныетрусы", "оставленныетапки"}', changes[api / "services.py"])
