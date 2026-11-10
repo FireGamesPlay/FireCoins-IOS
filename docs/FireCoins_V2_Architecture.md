@@ -170,8 +170,9 @@ Father-only. The server validates positive integer amount, reason length and req
 
 - Artemiy can create a withdrawal request; the request itself does not immediately deduct balance.
 - Father can approve/reject once.
-- Approval rechecks available balance inside `BEGIN IMMEDIATE`, deducts and creates the corresponding transaction atomically.
-- Duplicate resolution attempts return 409.
+- Both the API and Telegram bot acquire a write reservation with `BEGIN IMMEDIATE` before reading and resolving a request.
+- Approval rechecks available balance inside the same transaction, deducts and creates the corresponding transaction atomically.
+- Duplicate resolution attempts return 409 or an already-processed Telegram response.
 - Pending requests are displayed on both devices.
 
 ### Roulette
@@ -185,7 +186,7 @@ Father-only. The server validates positive integer amount, reason length and req
 
 ### Notes
 
-The existing `POST /api/note` only sends a Telegram message and does not persist a note feed. V2 adds a small private JSON sidecar store outside `points.db` for durable two-device note history, while keeping Telegram delivery as a notification. This avoids altering the production business schema. Notes are bounded in size, stored with sender/recipient IDs and timestamps, and returned only to the two permitted users.
+The existing `POST /api/note` only sent a Telegram message and did not persist a note feed. V2 uses `workflow_store.py` to persist a private JSON sidecar outside `points.db`, while keeping Telegram delivery as a notification. The Telegram bot and API share the same store, so notes sent from either surface appear on both mobile clients. Notes are bounded in size, restricted to the two configured account IDs, stored with sender/recipient IDs and timestamps, and returned only to the two permitted users.
 
 ## 6. Dispute state and notes without changing points.db
 
@@ -227,7 +228,7 @@ Native Android project:
 
 - Kotlin, Jetpack Compose, Material 3 with a custom Fire Coins dark theme.
 - ViewModel + repository + domain/data separation.
-- Retrofit/OkHttp API client with bearer interceptor and one coordinated refresh authenticator.
+- Kotlin coroutine-based API client over HTTPS with bearer authentication and serialized refresh-token rotation.
 - EncryptedSharedPreferences or AndroidX Security backed by Android Keystore for tokens.
 - Coil for image rendering; Activity Result API for proof photo selection.
 - Same server role gating and same API endpoints as iOS.
@@ -280,14 +281,14 @@ Native Android project:
 - Idempotency keys for retryable money-changing client requests are a follow-up hardening item; until implemented, clients must not automatically replay a mutation whose result is unknown.
 - Audit logging records action type, actor ID, resource ID, outcome and timestamp without credentials.
 
-## 11. Known gaps to close during implementation
+## 11. Remaining pre-release gates
 
-1. Inspect `Bot.py` callbacks before changing dispute resolution, because the bot may currently mutate the same transaction rows independently.
-2. Add persistent notes feed; current service only sends Telegram notifications.
-3. Add casino-round history DTO; current endpoint exposes quota but not a structured rounds list.
-4. Preserve transaction history during dispute approval and display final dispute outcomes without schema changes.
-5. Add API contract tests for every iOS/Android operation.
-6. Confirm production TLS/proxy routing for `https://app.firegames-it.tech` and confirm direct port 8080 is not relied on by another deployment before considering firewall changes.
+1. Run the guarded source patches against a staging copy of the deployed project and compare every generated diff before production use.
+2. Add route-level API integration tests with a temporary SQLite database and a mocked Telegram client; the current CI covers auth/workflow stores and patch generation, not the full live API contract.
+3. Exercise concurrent withdrawal and dispute resolutions from the bot and both mobile clients to confirm `BEGIN IMMEDIATE` and final-state checks prevent duplicate balance changes.
+4. Verify the replacement `TG_BOT_TOKEN` is configured for both systemd services without printing it, and confirm the previously exposed token has been revoked.
+5. Confirm TLS/proxy routing for `https://app.firegames-it.tech`; do not alter firewall access to port 8080 until its consumers are identified.
+6. Perform a physical-device smoke test on iOS and Android for invitation redemption, session restore, proof upload/download, role restrictions and refresh after an offline interval.
 
 ---
 
