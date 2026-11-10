@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterator
 
-from .config import MOBILE_STATE_STORE_PATH
+from .config import MOBILE_STATE_STORE_PATH, POINTS_DB_PATH
 
 
 class MobileStateStore:
@@ -16,6 +16,8 @@ class MobileStateStore:
 
     def __init__(self, path: Path | str = MOBILE_STATE_STORE_PATH):
         self.path = Path(path).expanduser().resolve()
+        if self.path == Path(POINTS_DB_PATH).expanduser().resolve():
+            raise ValueError("Mobile state store must never point to the business SQLite database.")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
 
     def _prepare(self) -> None:
