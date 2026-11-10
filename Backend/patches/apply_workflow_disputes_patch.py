@@ -408,7 +408,7 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
     await query.answer()
     user_id = query.from_user.id
     if user_id != FATHER_ID:
-        await query.answer("Нет прав на это действие.", show_alert=True)
+        await safe_edit_message_text(query, "⛔️ Нет прав на это действие.")
         return
 
     data = query.data or ""
@@ -498,7 +498,7 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
     query = update.callback_query
     await query.answer()
     if query.from_user.id != ARTEMIY_ID:
-        await query.answer("Нет прав на это действие.", show_alert=True)
+        await safe_edit_message_text(query, "⛔️ Нет прав на это действие.")
         return
 
     data = query.data or ""
