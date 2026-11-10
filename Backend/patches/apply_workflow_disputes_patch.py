@@ -182,6 +182,57 @@ def build_changes() -> dict[Path, str]:
     return {"id": transaction_id, "status": status}'''
     services = replace_function(services, "resolve_dispute", resolve_dispute, expected_async=True)
 
+    casino_status = '''async def get_casino_status(user_id: int) -> dict[str, Any]:
+    week_ago_str = (_utc_now() - dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    async with db_connection() as db:
+        cursor = await db.execute(
+            """
+            SELECT COUNT(*) AS count FROM transactions
+            WHERE (from_id = ? OR to_id = ?)
+            AND reason IN (?, ?)
+            AND timestamp >= ?
+            """,
+            (user_id, user_id, CASINO_WIN_REASON, CASINO_LOSS_REASON, week_ago_str),
+        )
+        row = await cursor.fetchone()
+        used = int(row["count"]) if row else 0
+
+        cursor = await db.execute(
+            """
+            SELECT id, amount, reason, timestamp
+            FROM transactions
+            WHERE (from_id = ? OR to_id = ?)
+            AND reason IN (?, ?)
+            ORDER BY timestamp DESC
+            LIMIT 10
+            """,
+            (user_id, user_id, CASINO_WIN_REASON, CASINO_LOSS_REASON),
+        )
+        history_rows = await cursor.fetchall()
+
+    rounds = []
+    for item in history_rows:
+        reason = str(item["reason"] or "")
+        won = reason == CASINO_WIN_REASON
+        amount = int(item["amount"])
+        rounds.append({
+            "id": int(item["id"]),
+            "bet": amount // 2 if won else amount,
+            "won": won,
+            "payout": amount if won else 0,
+            "timestamp": _timestamp(item["timestamp"]),
+        })
+
+    return {
+        "spins_used": used,
+        "spins_limit": 2,
+        "spins_left": max(0, 2 - used),
+        "week_window_start": week_ago_str,
+        "win_chance": 0.5,
+        "rounds": rounds,
+    }'''
+    services = replace_function(services, "get_casino_status", casino_status, expected_async=True)
+
     send_note = '''async def send_note(user: MiniAppUser, text_raw: Any) -> dict[str, Any]:
     note_text = str(text_raw or "").strip()
     if not note_text:
