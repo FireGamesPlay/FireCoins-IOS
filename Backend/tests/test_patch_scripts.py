@@ -37,7 +37,7 @@ async def send_note(user, text_raw):
     get_history,
 )
 
-async def me(_: web.Request, user: MiniAppUser):
+async def me(_: web.Request, user: MiniAppUser) -> web.Response:
     return {}
 
 def create_app():
