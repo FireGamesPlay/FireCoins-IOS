@@ -130,7 +130,9 @@ class MobileAuthStore:
             state = self._load_unlocked()
             try:
                 yield state
-            except Exception:
+            except BaseException:
+                if write:
+                    self._save_unlocked(state)
                 raise
             else:
                 if write:
