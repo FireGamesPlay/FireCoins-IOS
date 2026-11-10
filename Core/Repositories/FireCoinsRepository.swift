@@ -19,4 +19,5 @@ protocol FireCoinsSessionManaging: AnyObject {
     func signOut() async
     func refreshSnapshot() async throws
     func loadProof(transactionID: UUID) async throws -> Data
+    func reissueAdminInvitation() async throws -> String
 }
