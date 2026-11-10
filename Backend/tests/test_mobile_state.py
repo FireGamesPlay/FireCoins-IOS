@@ -39,7 +39,8 @@ class MobileStateStoreTests(unittest.TestCase):
     def test_notes_are_visible_to_both_participants_only(self) -> None:
         self.store.append_note(111, 222, "Father", "Hello")
         self.store.append_note(222, 111, "Artemiy", "Hi")
-        self.store.append_note(333, 444, "Stranger", "Secret")
+        with self.assertRaises(ValueError):
+            self.store.append_note(333, 444, "Stranger", "Secret")
 
         father_notes = self.store.get_notes(111)
         artemiy_notes = self.store.get_notes(222)
@@ -63,6 +64,10 @@ class MobileStateStoreTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
         raw = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(raw["version"], 1)
+
+    def test_store_cannot_point_to_business_database(self) -> None:
+        with self.assertRaises(ValueError):
+            MobileStateStore(Path("/tmp/firecoins-points-test.db"))
 
 
 if __name__ == "__main__":
