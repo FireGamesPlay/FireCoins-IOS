@@ -26,7 +26,8 @@ data class AppUiState(
     val pendingDisputes: List<ru.firedev.firecoins.data.FcTransaction> = emptyList(),
     val rouletteResult: RouletteResult? = null,
     val message: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val sessionRecovery: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -138,7 +139,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     state.value = repository.loadSnapshot(role).toUiState(isLoading = false)
                 }
             } catch (error: Exception) {
-                state.value = AppUiState(isLoading = false, error = error.message)
+                state.value = AppUiState(
+                    isLoading = false,
+                    error = error.message,
+                    sessionRecovery = repository.hasSession
+                )
+            }
+        }
+    }
+
+    fun retrySession() {
+        viewModelScope.launch {
+            state.value = state.value.copy(isLoading = true, error = null)
+            try {
+                val role = repository.restoreSession()
+                if (role == null) {
+                    state.value = AppUiState(isLoading = false)
+                } else {
+                    state.value = repository.loadSnapshot(role).toUiState(isLoading = false)
+                }
+            } catch (error: Exception) {
+                state.value = state.value.copy(
+                    isLoading = false,
+                    error = error.message ?: "Не удалось восстановить подключение.",
+                    sessionRecovery = repository.hasSession
+                )
             }
         }
     }
