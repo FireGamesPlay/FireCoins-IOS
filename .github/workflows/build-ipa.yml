@@ -13,14 +13,6 @@ on:
           - development
           - ad-hoc
           - app-store-connect
-      signing_identity:
-        description: Certificate identity contained in the P12
-        required: true
-        type: choice
-        default: Apple Development
-        options:
-          - Apple Development
-          - Apple Distribution
   push:
     branches:
       - v2-development
@@ -47,7 +39,6 @@ jobs:
           P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
           PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SIGNING_IDENTITY: ${{ inputs.signing_identity || 'Apple Development' }}
         run: |
           set -euo pipefail
           test -n "$P12_BASE64" || (echo "Missing IOS_P12_BASE64 secret" && exit 1)
@@ -110,18 +101,53 @@ jobs:
           security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$PROFILE_PLIST")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$PROFILE_PLIST")
+          SIGNING_CERT_SHA1=$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha1 | sed 's/.*=//;s/://g')
+
+          export PROFILE_PLIST CERT_PEM TEAM_ID
+          python3 - <<'PY'
+          import hashlib, os, plistlib, subprocess, sys
+          with open(os.environ["PROFILE_PLIST"], "rb") as stream:
+              profile = plistlib.load(stream)
+          team_ids = profile.get("TeamIdentifier", [])
+          if os.environ["TEAM_ID"] not in team_ids:
+              raise SystemExit("The provisioning profile belongs to a different Apple team.")
+          cert_der = subprocess.check_output([
+              "openssl", "x509", "-in", os.environ["CERT_PEM"], "-outform", "DER"
+          ])
+          cert_hash = hashlib.sha256(cert_der).digest()
+          profile_hashes = {
+              hashlib.sha256(item).digest()
+              for item in profile.get("DeveloperCertificates", [])
+          }
+          if cert_hash not in profile_hashes:
+              raise SystemExit("The P12 signing certificate is not included in this provisioning profile.")
+          entitlements = profile.get("Entitlements", {})
+          if entitlements.get("get-task-allow") is True:
+              method = "development"
+          elif profile.get("ProvisionedDevices"):
+              method = "ad-hoc"
+          else:
+              method = "app-store-connect"
+          print("Provisioning profile matches the P12 certificate.")
+          print("Detected provisioning profile type:", method)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("export_method=" + method + "\\n")
+          PY
+
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
 
           echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
           echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
-          echo "signing_identity=$SIGNING_IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "signing_cert_sha1=$SIGNING_CERT_SHA1" >> "$GITHUB_OUTPUT"
 
       - name: Archive iOS app
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           TEAM_ID: ${{ steps.signing.outputs.team_id }}
-          SIGNING_IDENTITY: ${{ steps.signing.outputs.signing_identity }}
+          SIGNING_CERT_SHA1: ${{ steps.signing.outputs.signing_cert_sha1 }}
+          PROFILE_UUID: ${{ steps.signing.outputs.profile_uuid }}
         run: |
           set -euo pipefail
           xcodebuild \
@@ -131,17 +157,17 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/FireCoins.xcarchive" \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            CODE_SIGN_IDENTITY="$SIGNING_CERT_SHA1" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             archive
 
       - name: Export IPA
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           TEAM_ID: ${{ steps.signing.outputs.team_id }}
-          SIGNING_IDENTITY: ${{ steps.signing.outputs.signing_identity }}
-          EXPORT_METHOD: ${{ inputs.export_method || 'development' }}
+          SIGNING_CERT_SHA1: ${{ steps.signing.outputs.signing_cert_sha1 }}
+          EXPORT_METHOD: ${{ inputs.export_method || steps.signing.outputs.export_method }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -150,7 +176,7 @@ jobs:
               "method": os.environ["EXPORT_METHOD"],
               "teamID": os.environ["TEAM_ID"],
               "signingStyle": "manual",
-              "signingCertificate": os.environ["SIGNING_IDENTITY"],
+              "signingCertificate": os.environ["SIGNING_CERT_SHA1"],
               "provisioningProfiles": {
                   "app.ursamajor9973.elephant5884": os.environ["PROFILE_NAME"]
               },
