@@ -39,6 +39,7 @@ struct AdminPanelView: View {
     var body: some View {
         ZStack {
             FCTheme.background.ignoresSafeArea()
+                .onTapGesture { KeyboardDismiss.dismiss() }
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 23) {
                     VStack(alignment: .leading, spacing: 5) {
