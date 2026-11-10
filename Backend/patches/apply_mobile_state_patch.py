@@ -223,7 +223,7 @@ old_note = '''async def send_note(user: MiniAppUser, text_raw: Any) -> dict[str,
     try:
         await telegram.send_message(
             chat_id=target_id,
-            text=f"Новая заметка:\\n\\n{text}\\n\\n— От: {user.display_name}",
+            text=f"Новая заметка:\n\n{text}\n\n— От: {user.display_name}",
         )
     except TelegramApiError as exc:
         raise ApiError("Telegram could not deliver this note.", status=502, code="telegram_error") from exc
@@ -264,7 +264,7 @@ new_note = '''async def send_note(user: MiniAppUser, text_raw: Any) -> dict[str,
     try:
         await telegram.send_message(
             chat_id=target_id,
-            text=f"Новая заметка:\\n\\n{text}\\n\\n— От: {user.display_name}",
+            text=f"Новая заметка:\n\n{text}\n\n— От: {user.display_name}",
         )
     except TelegramApiError:
         logger.exception("Telegram note notification failed; note remains in the shared feed")
