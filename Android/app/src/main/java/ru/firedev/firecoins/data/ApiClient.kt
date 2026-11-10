@@ -2,6 +2,8 @@ package ru.firedev.firecoins.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -11,6 +13,7 @@ import java.util.UUID
 
 class ApiClient(context: Context) {
     private val sessionStore = SessionStore(context.applicationContext)
+    private val refreshMutex = Mutex()
 
     val hasSession: Boolean
         get() = !sessionStore.refreshToken.isNullOrBlank()
@@ -125,7 +128,7 @@ class ApiClient(context: Context) {
         return result.second
     }
 
-    private suspend fun refreshSession() {
+    private suspend fun refreshSession() = refreshMutex.withLock {
         val refresh = sessionStore.refreshToken ?: run {
             sessionStore.clear()
             throw IOException("Сессия истекла. Войдите по приглашению ещё раз.")
@@ -141,14 +144,16 @@ class ApiClient(context: Context) {
             readResponse(connection)
         }
 
-        if (result.first !in 200..299) {
+        if (result.first == 401) {
             sessionStore.clear()
             throw IOException("Сессия истекла. Войдите по приглашению ещё раз.")
         }
-        val session = result.second.optJSONObject("session") ?: run {
-            sessionStore.clear()
-            throw IOException("Сервер вернул некорректную сессию.")
+        if (result.first !in 200..299) {
+            throw IOException(result.second.optJSONObject("error")?.optString("message")
+                .orEmpty().ifBlank { "Не удалось обновить сессию. Проверьте соединение." })
         }
+        val session = result.second.optJSONObject("session")
+            ?: throw IOException("Сервер вернул некорректную сессию.")
         storeSession(session)
     }
 
