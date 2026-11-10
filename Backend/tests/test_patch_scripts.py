@@ -27,6 +27,9 @@ def _transaction_dict(row):
 async def resolve_dispute(user, transaction_id_raw, action):
     return {}
 
+async def get_casino_status(user_id):
+    return {}
+
 async def send_note(user, text_raw):
     return {}
 """
