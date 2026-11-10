@@ -19,6 +19,7 @@ config_stub.get_role = lambda user_id: {111: "father", 222: "artemiy"}.get(user_
 sys.modules.setdefault("api.config", config_stub)
 
 from api import mobile_auth
+from api.workflow_store import WorkflowStore
 
 
 class MobileAuthStoreTests(unittest.TestCase):
@@ -106,6 +107,31 @@ class MobileAuthStoreTests(unittest.TestCase):
     def test_auth_store_cannot_overwrite_business_database(self) -> None:
         with self.assertRaises(ValueError):
             mobile_auth.MobileAuthStore(Path("/tmp/firecoins-points-test.db"))
+
+
+
+class WorkflowStoreTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.store = WorkflowStore(Path(self.temp_dir.name) / "workflow.json")
+
+    def test_notes_are_persisted_and_visible_to_both_participants(self) -> None:
+        note = self.store.append_note(111, "father", 222, "Father", "Хорошая работа!")
+        self.assertEqual(note["text"], "Хорошая работа!")
+        self.assertEqual(len(self.store.list_notes(111)), 1)
+        self.assertEqual(len(self.store.list_notes(222)), 1)
+        self.assertEqual(self.store.list_notes(333), [])
+
+    def test_notes_reject_empty_or_oversized_text(self) -> None:
+        with self.assertRaises(ValueError):
+            self.store.append_note(111, "father", 222, "Father", "  ")
+        with self.assertRaises(ValueError):
+            self.store.append_note(111, "father", 222, "Father", "x" * 1201)
+
+    def test_notes_store_uses_restrictive_file_permissions(self) -> None:
+        self.store.append_note(111, "father", 222, "Father", "Test")
+        self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":
