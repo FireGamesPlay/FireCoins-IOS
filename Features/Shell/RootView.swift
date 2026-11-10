@@ -1,29 +1,34 @@
 import SwiftUI
 
 struct RootView: View {
-    @AppStorage("firecoins.activeRole") private var activeRoleRaw = ""
     @EnvironmentObject private var store: AppStore
-
-    private var activeRole: AppRole? { AppRole(rawValue: activeRoleRaw) }
 
     var body: some View {
         Group {
-            if let activeRole {
+            if store.isRestoringSession {
+                ZStack {
+                    FCTheme.background.ignoresSafeArea()
+                    ProgressView()
+                        .tint(FCTheme.accent)
+                        .scaleEffect(1.1)
+                }
+            } else if let activeRole = store.activeRole {
                 MainTabView(role: activeRole) {
-                    activeRoleRaw = ""
+                    Task { await store.signOut() }
                 }
                 .transition(.opacity)
             } else {
-                InvitationView { role in
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        activeRoleRaw = role.rawValue
-                    }
+                InvitationView { invitationCode in
+                    try await store.signIn(invitationCode: invitationCode)
                 }
                 .transition(.opacity)
             }
         }
         .background(FCTheme.background)
-        .animation(.easeInOut(duration: 0.2), value: activeRoleRaw)
+        .animation(.easeInOut(duration: 0.2), value: store.activeRole)
+        .task {
+            await store.restoreSession()
+        }
     }
 }
 
