@@ -59,6 +59,7 @@ struct CoinTransaction: Identifiable, Equatable {
     let reason: String
     let date: Date
     var proofImageData: Data?
+    var proofAvailable: Bool
     var disputeStatus: DisputeStatus
 
     init(
@@ -68,6 +69,7 @@ struct CoinTransaction: Identifiable, Equatable {
         reason: String,
         date: Date = .now,
         proofImageData: Data? = nil,
+        proofAvailable: Bool = false,
         disputeStatus: DisputeStatus = .none
     ) {
         self.id = id
@@ -76,6 +78,7 @@ struct CoinTransaction: Identifiable, Equatable {
         self.reason = reason
         self.date = date
         self.proofImageData = proofImageData
+        self.proofAvailable = proofAvailable || proofImageData != nil
         self.disputeStatus = disputeStatus
     }
 
