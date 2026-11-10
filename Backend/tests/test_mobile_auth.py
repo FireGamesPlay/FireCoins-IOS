@@ -14,6 +14,7 @@ config_stub = types.ModuleType("api.config")
 config_stub.ARTEMIY_ID = 222
 config_stub.FATHER_ID = 111
 config_stub.MOBILE_AUTH_STORE_PATH = Path("/tmp/firecoins-mobile-auth-test.json")
+config_stub.POINTS_DB_PATH = Path("/tmp/firecoins-points-test.db")
 config_stub.get_role = lambda user_id: {111: "father", 222: "artemiy"}.get(user_id, "unknown")
 sys.modules.setdefault("api.config", config_stub)
 
@@ -101,6 +102,10 @@ class MobileAuthStoreTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.store.bootstrap_invitations()
         self.assertEqual(len(json.loads(self.store_path.read_text())["invitations"]), 2)
+
+    def test_auth_store_cannot_overwrite_business_database(self) -> None:
+        with self.assertRaises(ValueError):
+            mobile_auth.MobileAuthStore(Path("/tmp/firecoins-points-test.db"))
 
 
 if __name__ == "__main__":
