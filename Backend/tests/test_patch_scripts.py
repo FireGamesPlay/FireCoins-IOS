@@ -96,6 +96,19 @@ async def show_history():
             patched_server = changes[api / "server.py"]
             self.assertIn('app.router.add_get("/api/notes", authed(notes))', patched_server)
 
+            patched_services = changes[api / "services.py"]
+            service_note_block = patched_services.split("async def send_note", 1)[1].split("async def get_notes", 1)[0]
+            self.assertLess(
+                service_note_block.index("workflow_store.append_note"),
+                service_note_block.index("telegram.send_message"),
+            )
+
+            bot_note_block = patched_bot.split("async def leave_note_text", 1)[1]
+            self.assertLess(
+                bot_note_block.index("workflow_store.append_note"),
+                bot_note_block.index("context.bot.send_message"),
+            )
+
             self.assertFalse((project / "points.db").exists())
 
 
