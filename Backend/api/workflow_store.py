@@ -122,10 +122,10 @@ class WorkflowStore:
             matching = [
                 note for note in data["notes"]
                 if isinstance(note, dict)
-                and int(note.get("sender_id", 0)) in {int(user_id), int(note.get("recipient_id", 0))}
-                and int(note.get("recipient_id", 0)) == int(user_id)
-                    or isinstance(note, dict)
-                    and int(note.get("sender_id", 0)) == int(user_id)
+                and (
+                    int(note.get("sender_id", 0)) == int(user_id)
+                    or int(note.get("recipient_id", 0)) == int(user_id)
+                )
             ]
             matching.sort(key=lambda note: int(note.get("created_at", 0)), reverse=True)
             return [dict(note) for note in matching[:safe_limit]]
