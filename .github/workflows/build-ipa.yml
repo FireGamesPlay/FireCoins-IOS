@@ -20,9 +20,15 @@ on:
         options:
           - Apple Development
           - Apple Distribution
+  push:
+    branches:
+      - v2-development
+    paths:
+      - ".github/workflows/build-ipa.yml"
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[signed-build]')
     runs-on: macos-latest
     steps:
       - name: Checkout source
@@ -40,7 +46,7 @@ jobs:
           P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
           PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SIGNING_IDENTITY: ${{ inputs.signing_identity }}
+          SIGNING_IDENTITY: ${{ inputs.signing_identity || 'Apple Development' }}
         run: |
           set -euo pipefail
           test -n "$P12_BASE64" || (echo "Missing IOS_P12_BASE64 secret" && exit 1)
@@ -113,7 +119,7 @@ jobs:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           TEAM_ID: ${{ steps.signing.outputs.team_id }}
           SIGNING_IDENTITY: ${{ steps.signing.outputs.signing_identity }}
-          EXPORT_METHOD: ${{ inputs.export_method }}
+          EXPORT_METHOD: ${{ inputs.export_method || 'development' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
