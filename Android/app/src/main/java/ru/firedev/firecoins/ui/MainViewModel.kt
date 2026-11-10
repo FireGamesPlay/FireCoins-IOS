@@ -25,9 +25,9 @@ data class AppUiState(
     val spinsLeft: Int = 0,
     val pendingDisputes: List<ru.firedev.firecoins.data.FcTransaction> = emptyList(),
     val rouletteResult: RouletteResult? = null,
+    val sessionRecovery: Boolean = false,
     val message: String? = null,
-    val error: String? = null,
-    val sessionRecovery: Boolean = false
+    val error: String? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -42,13 +42,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun login(invitationCode: String) {
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null)
+            state.value = state.value.copy(isLoading = true, error = null, sessionRecovery = false)
             try {
                 val role = repository.signIn(invitationCode)
+                // Keep the authenticated role as soon as the single-use invitation is accepted.
+                state.value = AppUiState(isLoading = true, role = role)
                 val snapshot = repository.loadSnapshot(role)
                 state.value = snapshot.toUiState(isLoading = false).copy(message = "Вход выполнен.")
             } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Не удалось войти.")
+                state.value = state.value.copy(
+                    isLoading = false,
+                    error = error.message ?: "Не удалось войти.",
+                    sessionRecovery = state.value.role == null && repository.hasStoredSession()
+                )
             }
         }
     }
@@ -129,26 +135,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         state.value = state.value.copy(message = null, error = null)
     }
 
-    private fun restoreSession() {
-        viewModelScope.launch {
-            try {
-                val role = repository.restoreSession()
-                if (role == null) {
-                    state.value = AppUiState(isLoading = false)
-                } else {
-                    state.value = repository.loadSnapshot(role).toUiState(isLoading = false)
-                }
-            } catch (error: Exception) {
-                state.value = AppUiState(
-                    isLoading = false,
-                    error = error.message,
-                    sessionRecovery = repository.hasSession
-                )
-            }
-        }
+    fun retrySession() {
+        restoreSession()
     }
 
-    fun retrySession() {
+    private fun restoreSession() {
         viewModelScope.launch {
             state.value = state.value.copy(isLoading = true, error = null)
             try {
@@ -156,14 +147,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (role == null) {
                     state.value = AppUiState(isLoading = false)
                 } else {
+                    // Authentication succeeded. A later snapshot outage must not discard the role.
+                    state.value = AppUiState(isLoading = true, role = role)
                     state.value = repository.loadSnapshot(role).toUiState(isLoading = false)
                 }
             } catch (error: Exception) {
-                state.value = state.value.copy(
-                    isLoading = false,
-                    error = error.message ?: "Не удалось восстановить подключение.",
-                    sessionRecovery = repository.hasSession
-                )
+                val message = error.message ?: "Не удалось восстановить сессию."
+                val current = state.value
+                state.value = if (current.role != null) {
+                    current.copy(isLoading = false, error = message)
+                } else {
+                    AppUiState(
+                        isLoading = false,
+                        sessionRecovery = repository.hasStoredSession(),
+                        error = message
+                    )
+                }
             }
         }
     }
