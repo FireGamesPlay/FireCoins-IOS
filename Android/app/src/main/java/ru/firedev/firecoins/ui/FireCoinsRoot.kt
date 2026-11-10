@@ -128,8 +128,20 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             proofError = null
             try {
                 val bytes = viewModel.downloadProof(transactionId)
-                selectedProofBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                    ?: throw IllegalStateException("Не удалось открыть фотографию.")
+                selectedProofBitmap = withContext(Dispatchers.Default) {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                        throw IllegalStateException("Файл не является корректной фотографией.")
+                    }
+                    var sampleSize = 1
+                    while (bounds.outWidth / sampleSize > 2048 || bounds.outHeight / sampleSize > 2048) {
+                        sampleSize *= 2
+                    }
+                    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+                        ?: throw IllegalStateException("Не удалось открыть фотографию.")
+                }
             } catch (error: Exception) {
                 proofError = error.message?.takeIf { it.isNotBlank() }
                     ?: "Не удалось загрузить фотографию."
