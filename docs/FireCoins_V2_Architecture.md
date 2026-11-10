@@ -79,7 +79,8 @@ The deployed service is Python `aiohttp`, not FastAPI. The current API already e
 | POST | `/api/withdrawals/{withdrawal_id}/resolve` | resolve withdrawal |
 | GET | `/api/casino/status` | roulette quota |
 | POST | `/api/casino` | play roulette |
-| POST | `/api/note` | send a note |
+| GET | `/api/notes` | synchronized private note history |
+| POST | `/api/note` | send and persist a note |
 
 All business endpoints currently authenticate through `X-Telegram-Init-Data`; the dev-auth path is disabled in the inspected production process. V2 adds bearer-session authentication without removing or changing Telegram authentication.
 
@@ -188,14 +189,23 @@ The existing `POST /api/note` only sends a Telegram message and does not persist
 
 ## 6. Dispute state and notes without changing points.db
 
-The existing `disputed` field only represents pending state. It cannot distinguish rejected from not disputed, and the current API deletes an approved original transaction. The V2 implementation therefore requires a private sidecar metadata store outside the business database for dispute outcome metadata and notes.
+The existing `disputed` column is declared BOOLEAN, but SQLite stores integer values and accepts values beyond 0/1 without a schema change. V2 uses this existing field as a compact state:
 
-- The sidecar is not a replacement for `points.db`.
-- The transaction table remains authoritative for money/points effects.
-- The sidecar stores only UI/workflow metadata keyed by existing transaction IDs.
-- Sidecar writes are atomic and locked; directory and file permissions are restrictive.
-- No existing rows are bulk-read, rewritten, or migrated during deployment.
-- Bot callbacks must update the same workflow metadata or call a shared service helper. This must be completed before switching on the new dispute UI.
+| Stored value | Meaning |
+|---:|---|
+| 0 | no dispute |
+| 1 | pending |
+| 2 | approved |
+| 3 | rejected |
+
+- Existing rows already containing 0/1 remain valid.
+- Approving a dispute updates the original row to 2, retains it in history, and inserts an opposite compensating transaction in the same `BEGIN IMMEDIATE` transaction.
+- Rejecting a dispute updates the row to 3. It is no longer eligible for another dispute, matching V1 domain behavior.
+- Both the API and Telegram bot must implement the same transition and balance correction. A second callback/request for an already resolved dispute returns a conflict/no-op rather than applying a second balance change.
+
+Notes need durable shared history, but the existing business schema has no notes table. V2 stores notes in a private JSON sidecar at `.private/firecoins_workflow.json`, outside `points.db`. The API and bot share the same module/path. The sidecar is not a replacement for `points.db`; it uses atomic file replacement, an inter-process lock and restrictive permissions. The API exposes `GET /api/notes`; `POST /api/note` sends the Telegram notification and persists the note. The bot also persists notes after successful Telegram delivery.
+
+No existing business rows are bulk-read, rewritten, or migrated during deployment.
 
 ## 7. iOS implementation
 
