@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterator
 
-from .config import MOBILE_STATE_STORE_PATH, POINTS_DB_PATH
+from .config import ARTEMIY_ID, FATHER_ID, MOBILE_STATE_STORE_PATH, POINTS_DB_PATH, POINTS_DB_PATH
 
 
 class MobileStateStore:
@@ -100,6 +100,11 @@ class MobileStateStore:
             return status if status in {"pending", "approved", "rejected"} else "none"
 
     def append_note(self, sender_id: int, recipient_id: int, sender_name: str, text: str) -> dict[str, Any]:
+        sender_id = int(sender_id)
+        recipient_id = int(recipient_id)
+        allowed_users = {int(FATHER_ID), int(ARTEMIY_ID)}
+        if sender_id not in allowed_users or recipient_id not in allowed_users or sender_id == recipient_id:
+            raise ValueError("Notes are restricted to the two configured Fire Coins accounts.")
         clean = str(text or "").strip()
         if not clean:
             raise ValueError("Note text is required.")
@@ -107,9 +112,9 @@ class MobileStateStore:
             raise ValueError("Note text is too long.")
         record = {
             "id": os.urandom(16).hex(),
-            "sender_id": int(sender_id),
-            "recipient_id": int(recipient_id),
-            "sender_name": str(sender_name or "")[:80],
+            "sender_id": sender_id,
+            "recipient_id": recipient_id,
+            "sender_name": str(sender_name or "").strip()[:80],
             "text": clean,
             "timestamp": int(time.time()),
         }
@@ -121,15 +126,21 @@ class MobileStateStore:
         return record
 
     def get_notes(self, user_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        user_id = int(user_id)
+        allowed_users = {int(FATHER_ID), int(ARTEMIY_ID)}
+        if user_id not in allowed_users:
+            return []
         limit = max(1, min(int(limit or 100), 200))
         with self._locked() as state:
             notes = [
                 dict(note)
                 for note in state["notes"]
                 if isinstance(note, dict)
+                and int(note.get("sender_id", 0)) in allowed_users
+                and int(note.get("recipient_id", 0)) in allowed_users
                 and (
-                    int(note.get("sender_id", 0)) == int(user_id)
-                    or int(note.get("recipient_id", 0)) == int(user_id)
+                    int(note.get("sender_id", 0)) == user_id
+                    or int(note.get("recipient_id", 0)) == user_id
                 )
             ]
         notes.sort(key=lambda item: int(item.get("timestamp", 0)), reverse=True)
