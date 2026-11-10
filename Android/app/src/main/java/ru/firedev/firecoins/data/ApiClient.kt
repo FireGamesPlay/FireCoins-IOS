@@ -31,6 +31,21 @@ class ApiClient(context: Context) {
         return user
     }
 
+    suspend fun reissueAdminInvitation(): String {
+        val response = call(
+            path = "/api/mobile/invitations/reissue",
+            method = "POST",
+            payload = JSONObject()
+        )
+        val invitation = response.optJSONObject("invitation")
+            ?: throw IOException("Сервер не вернул новое приглашение.")
+        if (invitation.optString("role") != "father") {
+            throw IOException("Сервер вернул приглашение для неизвестной роли.")
+        }
+        return invitation.optString("code").takeIf { it.isNotBlank() }
+            ?: throw IOException("Сервер не вернул код приглашения.")
+    }
+
     suspend fun restoreSession(): JSONObject? {
         if (!hasSession) return null
         refreshSession()
