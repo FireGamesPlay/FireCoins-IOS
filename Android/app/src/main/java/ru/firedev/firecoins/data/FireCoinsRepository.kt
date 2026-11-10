@@ -58,6 +58,8 @@ class FireCoinsRepository(private val api: ApiClient) {
     }
 
     suspend fun logout() = api.logout()
+    suspend fun reissueAdminInvitation(): String = api.reissueAdminInvitation()
+
 
     fun hasStoredSession(): Boolean = api.hasSession
 
