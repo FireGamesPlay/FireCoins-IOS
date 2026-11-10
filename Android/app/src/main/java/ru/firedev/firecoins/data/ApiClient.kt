@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -101,7 +102,13 @@ class ApiClient(context: Context) {
             ?: throw IOException("Сервер не вернул идентификатор фотографии.")
     }
 
-    suspend fun downloadProof(transactionId: Long): ByteArray {
+    suspend fun downloadProof(transactionId: Long): ByteArray =
+        downloadProofInternal(transactionId, retryAfterRefresh = true)
+
+    private suspend fun downloadProofInternal(
+        transactionId: Long,
+        retryAfterRefresh: Boolean
+    ): ByteArray {
         require(transactionId > 0) { "Некорректный идентификатор фотографии." }
         return withContext(Dispatchers.IO) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
@@ -109,6 +116,11 @@ class ApiClient(context: Context) {
                 connection.connectTimeout = 12_000
                 connection.readTimeout = 20_000
                 val code = connection.responseCode
+                if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
+                    connection.disconnect()
+                    refreshSession()
+                    return@withContext downloadProofInternal(transactionId, retryAfterRefresh = false)
+                }
                 if (code !in 200..299) {
                     val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                     throw IOException(parseError(text, code))
