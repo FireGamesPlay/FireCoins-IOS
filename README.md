@@ -1,95 +1,91 @@
-# Fire Coins — iOS prototype 0.1
+# Fire Coins V2
 
-Нативный SwiftUI-прототип персональной системы Fire Coins. Минимальная версия рассчитана на два аккаунта: Артемий (пользователь) и Папа (администратор).
+Private two-account points system with native iOS and Android clients, a shared API and the existing Telegram bot.
 
-## Что уже работает
+**Active development branch:** \`v2-development\`  
+**Production baseline:** current Telegram bot + aiohttp Mini App API  
+**Database constraint:** keep the existing \`/root/ScoringSystemBot/points.db\` and its schema intact.
 
-- Вход по одному из двух персональных кодов приглашения.
-- Главный экран с балансом и последними операциями.
-- История с фильтрами: день, неделя, месяц и всё время.
-- Оспаривание одной из последних десяти операций; администратор может одобрить или отклонить спор.
-- Начисления и списания с причинами; для причин «Неубранные трусы» и «Оставленные тапки» требуется фото.
-- Запрос на вывод баллов; администратор одобряет или отклоняет его.
-- Рулетка с шансом 50/50, ставкой и ограничением два запуска за последние семь дней.
-- Администраторские списания сохраняют исходное поведение бота и могут сделать баланс отрицательным; ставки и одобренный вывод проверяют доступный баланс.
-- Личные заметки между двумя ролями.
-- Все основные операции реализованы через протокол репозитория и отдельную реализацию `InMemoryFireCoinsRepository`.
+## Product
 
-## Коды приглашения прототипа
+Fire Coins is intentionally limited to two server-configured accounts:
 
-| Аккаунт | Код |
-|---|---|
-| Артемий | `FC-7KQ9-MX4P-2VND` |
-| Папа | `FC-3X9M-L2CW-8RHT` |
+- **Artemiy** — member account.
+- **Father** — administrator account.
 
-Коды находятся в `Core/Design/Theme.swift`. Не публикуйте их в открытом доступе. Сейчас это локальная проверка внутри приложения, а не серверная авторизация: код можно извлечь из собранного приложения. Для реальной защиты проверку приглашения нужно перенести на сервер.
+V2 replaces the V1 demo repository with a server-authoritative implementation. The UI keeps the original charcoal/bronze visual language and navigation structure.
 
-## Открытие проекта
+### Features
 
-1. Откройте `FireCoins.xcodeproj` в Xcode на Mac.
-2. Выберите схему `FireCoins` и симулятор iPhone.
-3. Запустите приложение через Run.
-4. Войдите кодом нужного аккаунта.
+- Invitation-only account activation with one-time server-issued invitation codes.
+- Server-side balance and transaction history.
+- Admin credit/debit operations and photo evidence for selected reasons.
+- Dispute requests, approval/rejection and compensating transaction history.
+- Withdrawal requests and admin decisions.
+- Server-authoritative 50/50 roulette, rolling seven-day limit and transaction-backed round history.
+- Persistent notes visible to both accounts, with Telegram notifications.
+- Authenticated proof image downloads.
+- Persistent mobile sessions with refresh-token rotation and logout revocation.
+- Existing Telegram Mini App authentication remains supported.
 
-Минимальная версия iOS — 17.0. У приложения нет сторонних зависимостей.
+## Repository layout
 
-## Важные ограничения текущего прототипа
+- \`App/\`, \`Core/\`, \`Features/\` — iOS SwiftUI app.
+- \`Android/\` — native Kotlin + Jetpack Compose Android app.
+- \`Backend/api/\` — backend modules and sidecar stores prepared for deployment.
+- \`Backend/patches/\` — guarded, backup-first scripts to apply server changes.
+- \`Backend/tests/\` — isolated Python tests.
+- \`docs/FireCoins_V2_Architecture.md\` — architecture and rollout requirements.
+- \`.github/workflows/\` — backend tests, iOS simulator build, Android APK build and existing signed IPA workflow.
 
-- База данных и сервер не подключены.
-- Баланс, операции, заявки, рулетка и заметки живут только в памяти текущего запуска. После полного закрытия приложения демо-состояние сбрасывается.
-- Два устройства не синхронизируются. То, что сделано в приложении на одном устройстве, не появится на втором.
-- `@AppStorage` запоминает только выбранную роль на конкретном устройстве; это не аккаунт и не серверная сессия.
-- Уведомления между устройствами пока не отправляются.
+## Invitation security
 
-Эти ограничения намеренные: сейчас проверяются интерфейс и бизнес-сценарии без подключения хранилища.
+The invitation strings once embedded in the V1 prototype were published in the repository and must be considered compromised. They have been removed from the V2 application source and must never be reused.
 
-## Архитектура
+V2 invitations are generated only on the server. The server stores salted password hashes, binds each code to one role and accepts it once. Codes are not committed to GitHub or embedded in iOS/Android binaries. The bootstrap command prints new codes once on the VPS; keep them private.
 
-- `Core/Models` — модели предметной области, статусы и ошибки.
-- `Core/Repositories/FireCoinsRepository.swift` — контракт хранилища.
-- `Core/Repositories/InMemoryFireCoinsRepository.swift` — временное хранилище в памяти.
-- `Core/Store/AppStore.swift` — единая точка состояния для SwiftUI.
-- `Core/Design` — дизайн-токены и переиспользуемые компоненты.
-- `Features` — отдельные экраны и сценарии приложения.
+## Backend and database safety
 
-При подключении бэкенда новая реализация `FireCoinsRepository` сможет заменить in-memory вариант без переписывания экранов. Для производственной версии операции баланса должны исполняться сервером атомарно; локальное приложение не должно быть источником истины для баланса.
+The deployed backend is Python \`aiohttp\`. The Telegram bot and API use the same SQLite file:
 
-## Учёт операций
+\`/root/ScoringSystemBot/points.db\`
 
-Одобренное оспаривание не удаляет исходную транзакцию. Вместо этого исходная операция получает статус «Баллы возвращены», а в историю добавляется компенсирующая запись. Это сохраняет аудиторский след.
+V2 intentionally does not introduce a new business database or change the SQLite schema. Mobile authentication and shared note history use separate private files under \`.private/\`, outside the SQLite database. The business database remains the authority for balances, transactions and withdrawals.
 
-В рулетке отдельно учитываются списание ставки и выплата. Так сумма записей соответствует изменению баланса.
+Do not run deployment patches against production until:
+1. the bot token has been rotated if the previously hardcoded token was still active;
+2. a verified backup and integrity check of \`points.db\` exist;
+3. backend tests and staging checks pass;
+4. the current service environment has been checked without exposing secrets;
+5. an operator has approved the production switch.
 
-## Сборка IPA через GitHub Actions
+The patch scripts are not self-deploying and do not restart services. They create backups and modify source files only. Production changes must be carried out as a separate, reviewed deployment.
 
-В проект добавлен ручной workflow `.github/workflows/build-ipa.yml`. Он использует macOS runner GitHub Actions, поэтому собственный Mac для этой сборки не нужен.
+## iOS build
 
-В GitHub репозитории откройте **Settings → Secrets and variables → Actions** и добавьте секреты:
+Open \`FireCoins.xcodeproj\` in Xcode or use the GitHub Actions iOS build. The project targets iOS 17+. Mobile credentials are stored in Keychain; the local app role is not used as server authorization.
 
-- `IOS_P12_BASE64` — содержимое `.p12`, закодированное в Base64.
-- `IOS_P12_PASSWORD` — пароль от `.p12`.
-- `IOS_PROVISIONING_PROFILE_BASE64` — `.mobileprovision` в Base64.
-- `APPLE_TEAM_ID` — Team ID Apple Developer.
+The existing \`.github/workflows/build-ipa.yml\` remains available for signed IPA distribution. Its Apple signing credentials belong in GitHub Actions Secrets, never in the repository or chat.
 
-Затем откройте **Actions → Build signed IPA → Run workflow**. Выберите тип профиля (`development`, `ad-hoc` или `app-store-connect`) и тип сертификата. Готовый `.ipa` будет приложен как artifact `FireCoins-IPA`.
+## Android build
 
-Профиль, сертификат, Team ID и Bundle ID должны соответствовать друг другу. В проекте Bundle ID сейчас `ru.firedev.firecoins`; если профиль выдан для другого Bundle ID, его нужно согласованно изменить в настройках Xcode-проекта и в workflow. Секреты нельзя вставлять в исходники или отправлять в чат.
+Open the \`Android/\` directory in Android Studio. The Android app uses Kotlin, Jetpack Compose and encrypted session storage backed by Android Keystore. The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
 
-**Важно:** workflow добавлен как шаблон и не был запущен в этой среде. Первая сборка подтвердит, что твой конкретный сертификат и профиль подходят для выбранного способа распространения.
+The debug APK is for installation/testing. A production release needs a separately managed signing key and an explicit release workflow.
 
-## Безопасность исходного Telegram-бота
+## Testing
 
-В загруженном исходнике был прописан токен Telegram-бота прямо в коде. Если он ещё не отозван, перевыпусти его через BotFather и используй новый токен только через переменную окружения/секреты. Старый токен не переносился в iOS-проект.
+- Backend tests: \`python -m unittest discover -s Backend/tests -v\` with \`PYTHONPATH=Backend\`.
+- Backend syntax: \`python -m compileall -q Backend\`.
+- iOS: GitHub Actions builds the \`FireCoins\` scheme for the iOS Simulator.
+- Android: GitHub Actions runs \`assembleDebug\` and uploads the APK.
 
-На Windows PowerShell Base64 можно получить так (путь замени на свой):
+A green CI run proves the code in that commit compiles/tests in the runner; it does not prove production API connectivity or authorize deployment.
 
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\\Path\\certificate.p12")) | Set-Clipboard
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\\Path\\profile.mobileprovision")) | Set-Clipboard
-```
+## Security notes
 
-Каждую команду запускай отдельно и вставляй получившуюся строку в соответствующий GitHub Secret. Пароль `.p12` и Team ID добавляются отдельными секретами.
-
-## Проверки
-
-В `Tests/FireCoinsRepositoryTests.swift` добавлены unit-тесты основных правил: изменение баланса, вывод после одобрения, компенсирующая запись по спору, обязательность фото для отдельных штрафов, отрицательный баланс при административном списании и лимит рулетки. Swift-файлы прошли синтаксический разбор; предметный слой отдельно прошёл typecheck и smoke-проверку. Полная сборка iOS и запуск XCTest требуют Xcode и здесь не выполнялись.
+- Never commit bot tokens, new invitation codes, session tokens, signing keys or private certificates.
+- The Telegram bot token must be read from the \`TG_BOT_TOKEN\` service environment variable.
+- Mobile roles and balances are derived from the server, not client-supplied fields.
+- The API continues to accept verified Telegram \`X-Telegram-Init-Data\` requests.
+- Do not share \`.env\`, process environments, credentials or private auth-store files.
