@@ -1,6 +1,4 @@
 name: Build signed IPA
-# One-time signed build validation trigger; normal builds remain manual.
-
 on:
   workflow_dispatch:
     inputs:
@@ -13,15 +11,9 @@ on:
           - development
           - ad-hoc
           - app-store-connect
-  push:
-    branches:
-      - v2-development
-    paths:
-      - ".github/workflows/build-ipa.yml"
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[signed-build]')
     runs-on: macos-latest
     steps:
       - name: Checkout source
