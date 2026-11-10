@@ -14,6 +14,7 @@ config_stub = types.ModuleType("api.config")
 config_stub.ARTEMIY_ID = 222
 config_stub.FATHER_ID = 111
 config_stub.MOBILE_AUTH_STORE_PATH = Path("/tmp/firecoins-mobile-auth-test.json")
+config_stub.MOBILE_STATE_STORE_PATH = Path("/tmp/firecoins-mobile-state-test.json")
 config_stub.POINTS_DB_PATH = Path("/tmp/firecoins-points-test.db")
 config_stub.get_role = lambda user_id: {111: "father", 222: "artemiy"}.get(user_id, "unknown")
 sys.modules.setdefault("api.config", config_stub)
