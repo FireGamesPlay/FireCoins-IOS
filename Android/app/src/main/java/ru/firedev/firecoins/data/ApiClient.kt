@@ -102,14 +102,50 @@ class ApiClient(context: Context) {
     }
 
     suspend fun downloadProof(transactionId: Long): ByteArray {
+        require(transactionId > 0) { "Некорректный идентификатор фотографии." }
         return withContext(Dispatchers.IO) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                val text = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IOException(parseError(text, code))
+            try {
+                connection.connectTimeout = 12_000
+                connection.readTimeout = 20_000
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                    throw IOException(parseError(text, code))
+                }
+
+                val contentType = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
+                if (!contentType.startsWith("image/")) {
+                    throw IOException("Сервер вернул не фотографию. Попробуйте обновить приложение.")
+                }
+
+                val declaredLength = connection.contentLengthLong
+                if (declaredLength > MAX_PROOF_BYTES) {
+                    throw IOException("Фотография слишком большая для просмотра.")
+                }
+
+                connection.inputStream.use { input ->
+                    val output = ByteArrayOutputStream(
+                        if (declaredLength in 1..MAX_PROOF_BYTES) declaredLength.toInt() else 32 * 1024
+                    )
+                    val buffer = ByteArray(16 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_PROOF_BYTES) {
+                            throw IOException("Фотография слишком большая для просмотра.")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    val bytes = output.toByteArray()
+                    if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
+                    bytes
+                }
+            } finally {
+                connection.disconnect()
             }
-            connection.inputStream.use { input -> input.readBytes() }
         }
     }
 
@@ -217,5 +253,6 @@ class ApiClient(context: Context) {
 
     private companion object {
         const val BASE_URL = "https://app.firegames-it.tech"
+        const val MAX_PROOF_BYTES = 12L * 1024L * 1024L
     }
 }
