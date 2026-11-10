@@ -70,10 +70,29 @@ jobs:
           echo "P12 validation successful"
           umask 077
 
-          # Import the PKCS#12 identity directly so macOS Keychain preserves
-          # the certificate/private-key pairing required by Xcode.
-          security import "$CERT_PATH" \
-            -P "$P12_PASSWORD" \
+          # Extract and verify the certificate/private-key pair without logging
+          # either object. Re-exporting normalizes older PKCS#12 encryption.
+          CERT_PEM="$RUNNER_TEMP/firecoins-cert.pem"
+          KEY_PEM="$RUNNER_TEMP/firecoins-key.pem"
+          NORMALIZED_P12="$RUNNER_TEMP/firecoins-normalized.p12"
+          openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -clcerts -nokeys -out "$CERT_PEM"
+          openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -nocerts -nodes -out "$KEY_PEM"
+          chmod 600 "$CERT_PEM" "$KEY_PEM"
+          if ! grep -Eq 'BEGIN ([A-Z0-9]+ )?PRIVATE KEY' "$KEY_PEM"; then
+            echo "IOS_P12_BASE64 does not contain a private signing key. Export the certificate together with its private key."
+            exit 1
+          fi
+          CERT_PUBLIC_KEY=$(openssl x509 -in "$CERT_PEM" -pubkey -noout | openssl pkey -pubin -outform DER | shasum -a 256 | awk '{print $1}')
+          KEY_PUBLIC_KEY=$(openssl pkey -in "$KEY_PEM" -pubout -outform DER | shasum -a 256 | awk '{print $1}')
+          if [ "$CERT_PUBLIC_KEY" != "$KEY_PUBLIC_KEY" ]; then
+            echo "The certificate and private key in IOS_P12_BASE64 do not match."
+            exit 1
+          fi
+          openssl pkcs12 -export -in "$CERT_PEM" -inkey "$KEY_PEM" -out "$NORMALIZED_P12" -passout pass:"$KEYCHAIN_PASSWORD" -name FireCoins
+          chmod 600 "$NORMALIZED_P12"
+
+          security import "$NORMALIZED_P12" \
+            -P "$KEYCHAIN_PASSWORD" \
             -A \
             -f pkcs12 \
             -k "$KEYCHAIN_PATH"
@@ -82,7 +101,7 @@ jobs:
 
           IDENTITY_COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | awk '/valid identities found/{print $1}')
           if [ "${IDENTITY_COUNT:-0}" -lt 1 ]; then
-            echo "The P12 imported, but no valid code-signing identity with a private key is available."
+            echo "No valid code-signing identity with a private key was found in the imported certificate."
             exit 1
           fi
           echo "Valid code-signing identities available: $IDENTITY_COUNT"
