@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import CryptoKit
+import UIKit
 
 private enum FireCoinsAPIConfiguration {
     static let baseURL = URL(string: "https://app.firegames-it.tech")!
@@ -582,7 +583,8 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         guard amount > 0 else { throw FireCoinsError.invalidAmount }
         var proofFileID: String?
         if let proofImageData {
-            proofFileID = try await api.uploadProof(proofImageData, reason: reason)
+            let jpeg = try Self.normalizedJPEG(proofImageData)
+            proofFileID = try await api.uploadProof(jpeg, reason: reason)
         }
         var payload: [String: Any] = ["amount": amount, "reason": reason]
         if let proofFileID { payload["proof_file_id"] = proofFileID }
@@ -643,6 +645,24 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         _ = role
         try await api.postEmpty("/api/note", payload: ["text": text])
         try await refreshSnapshot()
+    }
+
+    private static func normalizedJPEG(_ data: Data) throws -> Data {
+        guard let image = UIImage(data: data) else {
+            throw FireCoinsRemoteError.imageUploadFailed
+        }
+        var quality: CGFloat = 0.84
+        guard var jpeg = image.jpegData(compressionQuality: quality) else {
+            throw FireCoinsRemoteError.imageUploadFailed
+        }
+        while jpeg.count > 7 * 1024 * 1024 && quality > 0.44 {
+            quality -= 0.1
+            jpeg = image.jpegData(compressionQuality: quality) ?? jpeg
+        }
+        guard jpeg.count <= 8 * 1024 * 1024 else {
+            throw FireCoinsRemoteError.server("Фотография слишком большая. Выберите другое изображение.")
+        }
+        return jpeg
     }
 
     private static func mapTransaction(_ item: TransactionDTO) -> CoinTransaction {
