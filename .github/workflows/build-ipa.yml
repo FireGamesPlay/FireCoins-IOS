@@ -131,7 +131,7 @@ jobs:
           print("Provisioning profile matches the P12 certificate.")
           print("Detected provisioning profile type:", method)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("export_method=" + method + "\\n")
+              output.write("export_method=" + method + "\n")
           PY
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
