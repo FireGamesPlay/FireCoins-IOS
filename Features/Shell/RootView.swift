@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -28,6 +29,10 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.2), value: store.activeRole)
         .task {
             await store.restoreSession()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, store.activeRole != nil else { return }
+            Task { try? await store.refreshRemote() }
         }
     }
 }
