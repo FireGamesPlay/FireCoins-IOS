@@ -70,20 +70,22 @@ jobs:
           echo "P12 validation successful"
           umask 077
 
-          openssl pkcs12 \
-            -in "$CERT_PATH" \
-            -passin env:P12_PASSWORD \
-            -nodes \
-            -out "$RUNNER_TEMP/firecoins-signing.pem"
-
-          chmod 600 "$RUNNER_TEMP/firecoins-signing.pem"
-
-          security import "$RUNNER_TEMP/firecoins-signing.pem" \
+          # Import the PKCS#12 identity directly so macOS Keychain preserves
+          # the certificate/private-key pairing required by Xcode.
+          security import "$CERT_PATH" \
+            -P "$P12_PASSWORD" \
             -A \
-            -f pemseq \
+            -f pkcs12 \
             -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          IDENTITY_COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | awk '/valid identities found/{print $1}')
+          if [ "${IDENTITY_COUNT:-0}" -lt 1 ]; then
+            echo "The P12 imported, but no valid code-signing identity with a private key is available."
+            exit 1
+          fi
+          echo "Valid code-signing identities available: $IDENTITY_COUNT"
 
           PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
           security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
