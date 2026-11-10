@@ -12,6 +12,7 @@ import types
 
 config_stub = types.ModuleType("api.config")
 config_stub.MOBILE_STATE_STORE_PATH = Path("/tmp/firecoins-mobile-state-test.json")
+config_stub.POINTS_DB_PATH = Path("/tmp/firecoins-points-test.db")
 sys.modules.setdefault("api.config", config_stub)
 
 from api.mobile_state import MobileStateStore
