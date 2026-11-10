@@ -289,6 +289,14 @@ async def get_notes(user: MiniAppUser, limit: int = 100) -> list[dict[str, Any]]
         "bot workflow store import",
     )
 
+    token_lines = [line for line in bot.splitlines() if line.startswith("TOKEN = os.environ.get(")]
+    if len(token_lines) == 1:
+        token_line = token_lines[0]
+        replacement = 'TOKEN = os.environ.get("TG_BOT_TOKEN", "").strip()\\nif not TOKEN:\\n    raise RuntimeError("TG_BOT_TOKEN must be configured in the service environment.")'
+        bot = bot.replace(token_line, replacement, 1)
+    elif 'TOKEN = os.environ.get("TG_BOT_TOKEN", "").strip()' not in bot:
+        raise SystemExit("Could not safely locate Telegram token assignment in Bot.py.")
+
     bot_dispute = '''async def handle_dispute_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
