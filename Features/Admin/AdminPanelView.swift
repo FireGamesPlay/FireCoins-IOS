@@ -11,6 +11,9 @@ struct AdminPanelView: View {
     @State private var customReason = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var proofData: Data?
+    @State private var photoLoadError: String?
+    @State private var isPhotoLoading = false
+    @State private var isSaving = false
     @State private var alertMessage: String?
     @State private var selectedProofData: Data?
     @State private var showingProof = false
@@ -62,12 +65,30 @@ struct AdminPanelView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .onChange(of: kind) { _, newValue in
             reason = newValue == .credit ? creditReasons[0] : debitReasons[0]
-            selectedPhoto = nil
-            proofData = nil
         }
         .onChange(of: selectedPhoto) { _, newItem in
-            Task {
-                proofData = try? await newItem?.loadTransferable(type: Data.self)
+            guard let newItem else {
+                proofData = nil
+                return
+            }
+            isPhotoLoading = true
+            photoLoadError = nil
+            Task { @MainActor in
+                defer { isPhotoLoading = false }
+                do {
+                    guard let data = try await newItem.loadTransferable(type: Data.self) else {
+                        throw NSError(
+                            domain: "FireCoins.Photo",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Фото не удалось прочитать."]
+                        )
+                    }
+                    proofData = data
+                } catch {
+                    proofData = nil
+                    selectedPhoto = nil
+                    photoLoadError = "Не удалось прочитать фотографию: \(error.localizedDescription)"
+                }
             }
         }
         .sheet(isPresented: $showingProof) {
@@ -127,25 +148,42 @@ struct AdminPanelView: View {
                         .padding(15).background(FCTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
-            if requiresProof {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("ФОТОДОКАЗАТЕЛЬСТВО")
-                        .font(.system(size: 10, weight: .semibold)).tracking(1.1).foregroundStyle(FCTheme.muted)
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        HStack(spacing: 9) {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(requiresProof ? "ФОТОДОКАЗАТЕЛЬСТВО" : "ФОТОГРАФИЯ · НЕОБЯЗАТЕЛЬНО")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.1).foregroundStyle(FCTheme.muted)
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    HStack(spacing: 9) {
+                        if isPhotoLoading {
+                            ProgressView().tint(FCTheme.accent)
+                        } else {
                             Image(systemName: proofData == nil ? "camera" : "checkmark.circle.fill")
-                            Text(proofData == nil ? "Добавить фотографию" : "Фотография прикреплена")
                         }
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(proofData == nil ? FCTheme.accent : FCTheme.positive)
-                        .frame(maxWidth: .infinity)
-                        .padding(14)
-                        .background(FCTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(FCTheme.border, lineWidth: 1) }
+                        Text(
+                            proofData != nil
+                                ? "Фотография прикреплена"
+                                : (requiresProof ? "Добавить фотографию (обязательно)" : "Добавить фото (необязательно)")
+                        )
                     }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(proofData == nil ? FCTheme.accent : FCTheme.positive)
+                    .frame(maxWidth: .infinity)
+                    .padding(14)
+                    .background(FCTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(FCTheme.border, lineWidth: 1) }
+                }
+                .disabled(isPhotoLoading || isSaving)
+                if let photoLoadError {
+                    Text(photoLoadError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(FCTheme.negative)
                 }
             }
-            PrimaryActionButton(title: kind == .credit ? "Начислить баллы" : "Списать баллы", systemImage: kind == .credit ? "plus" : "minus", action: saveTransaction)
+            PrimaryActionButton(
+                title: kind == .credit ? "Начислить баллы" : "Списать баллы",
+                systemImage: kind == .credit ? "plus" : "minus",
+                disabled: isSaving || isPhotoLoading,
+                action: saveTransaction
+            )
             Text("Операция сразу меняет баланс и появляется в истории.")
                 .font(.system(size: 10)).foregroundStyle(FCTheme.muted)
         }
@@ -242,20 +280,34 @@ struct AdminPanelView: View {
     }
 
     private func saveTransaction() {
+        guard !isSaving && !isPhotoLoading else { return }
         guard let value = Int(amount), value > 0 else {
             alertMessage = FireCoinsError.invalidAmount.localizedDescription
             return
         }
+        if requiresProof && proofData == nil {
+            alertMessage = "Для этой причины нужно приложить фотографию."
+            return
+        }
+
         let transactionKind = kind
         let transactionReason = resolvedReason
         let transactionProof = proofData
+        isSaving = true
         Task { @MainActor in
+            defer { isSaving = false }
             do {
-                try await store.applyTransaction(amount: value, kind: transactionKind, reason: transactionReason, proofImageData: transactionProof)
+                try await store.applyTransaction(
+                    amount: value,
+                    kind: transactionKind,
+                    reason: transactionReason,
+                    proofImageData: transactionProof
+                )
                 amount = ""
                 customReason = ""
                 proofData = nil
                 selectedPhoto = nil
+                photoLoadError = nil
                 alertMessage = transactionKind == .credit ? "Баллы начислены." : "Баллы списаны."
             } catch {
                 alertMessage = error.localizedDescription
