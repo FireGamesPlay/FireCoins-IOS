@@ -146,10 +146,11 @@ async def notify_account(
     body: str,
     event: str,
     data: dict[str, Any] | None = None,
-) -> None:
+) -> int:
     try:
-        await push_delivery.send_to_user(user_id, title, body, event, data)
+        return await push_delivery.send_to_user(user_id, title, body, event, data)
     except Exception:
         # Push delivery is best effort: it must never roll back a committed
         # balance operation, note, dispute, or withdrawal.
         logger.exception("Push notification dispatch failed.")
+        return 0
