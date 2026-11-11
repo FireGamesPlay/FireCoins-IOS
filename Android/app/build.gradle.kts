@@ -16,8 +16,8 @@ android {
         applicationId = "ru.firedev.firecoins"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.1.2"
+        versionCode = 7
+        versionName = "2.1.3"
     }
 
     signingConfigs {
