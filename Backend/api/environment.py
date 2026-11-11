@@ -279,8 +279,8 @@ class DatabaseMode:
         return {"challenge": token, "expires_in": max(30, min(ttl_seconds, 180)), "_created_at": now}
 
 
-from .config import FATHER_ID, ARTEMIY_ID, POINTS_DB_PATH, MOBILE_AUTH_STORE_PATH
-PRIVATE_ROOT = MOBILE_AUTH_STORE_PATH.parent
+from .config import FATHER_ID, ARTEMIY_ID, POINTS_DB_PATH
+PRIVATE_ROOT = Path(POINTS_DB_PATH).expanduser().resolve().parent / ".private"
 database_mode = DatabaseMode(POINTS_DB_PATH, PRIVATE_ROOT, (FATHER_ID, ARTEMIY_ID))
 
 
