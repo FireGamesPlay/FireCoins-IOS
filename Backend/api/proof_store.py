@@ -8,13 +8,17 @@ import os
 import re
 import tempfile
 import uuid
+from io import BytesIO
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from .environment import current_sidecar_root
 
 MAX_PROOF_BYTES = 12 * 1024 * 1024
+MAX_PROOF_PIXELS = 40_000_000
 LOCAL_PROOF_PREFIX = "fcproof:"
 _LOCAL_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -39,6 +43,39 @@ def detect_image_content_type(data: bytes) -> str | None:
         if any(brand in brands for brand in (b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1")):
             return "image/heic"
     return None
+
+
+def _baseline_jpeg(data: bytes, max_bytes: int) -> bytes:
+    """Decode and re-encode JPEGs as baseline JPEG for consistent mobile decoding."""
+    if not data.startswith(bytes.fromhex("ffd8ff")):
+        return data
+
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if source.format != "JPEG":
+                return data
+            if source.width <= 0 or source.height <= 0 or source.width * source.height > MAX_PROOF_PIXELS:
+                raise ProofStoreError("Proof image dimensions are not supported.")
+            source.load()
+            image = ImageOps.exif_transpose(source)
+            output = BytesIO()
+            image.convert("RGB").save(
+                output,
+                format="JPEG",
+                quality=92,
+                optimize=True,
+                progressive=False,
+                subsampling=0,
+            )
+            normalized = output.getvalue()
+    except ProofStoreError:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ProofStoreError("Proof JPEG could not be decoded.") from exc
+
+    if not normalized or len(normalized) > max_bytes:
+        raise ProofStoreError("Normalized proof image exceeds the allowed size.")
+    return normalized
 
 
 class ProofStore:
@@ -128,8 +165,11 @@ class ProofStore:
             raise ProofStoreError("Proof image is empty.")
         if len(body) > max_bytes:
             raise ProofStoreError("Proof image is too large.")
-        if detect_image_content_type(body) is None:
+        content_type = detect_image_content_type(body)
+        if content_type is None:
             raise ProofStoreError("Uploaded proof is not a supported image.")
+        if content_type == "image/jpeg":
+            body = _baseline_jpeg(body, max_bytes)
         with self._locked():
             key = self._write_blob(body)
         return f"{LOCAL_PROOF_PREFIX}{key}"
@@ -156,6 +196,8 @@ class ProofStore:
         content_type = detect_image_content_type(body)
         if content_type is None:
             raise ProofStoreError("Legacy proof is not a supported image.")
+        if content_type == "image/jpeg":
+            body = _baseline_jpeg(body, max_bytes)
         digest = hashlib.sha256(reference.encode("utf-8")).hexdigest()
         with self._locked(write=True) as index:
             existing = index["legacy"].get(digest)
