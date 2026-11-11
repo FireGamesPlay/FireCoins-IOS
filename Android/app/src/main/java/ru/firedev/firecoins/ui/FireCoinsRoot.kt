@@ -161,7 +161,7 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     }
 
     val openProof: (Long) -> Unit = proofClick@{ transactionId ->
-        if (proofLoading) return@proofClick
+        if (proofLoading || proofRequestJob?.isActive == true) return@proofClick
 
         proofBitmapCache[transactionId]?.let { cached ->
             selectedProofBitmap = cached
