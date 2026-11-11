@@ -345,8 +345,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 canResetDatabase = settings.optBoolean("can_reset_database", role == "father"),
                 pushConfigured = settings.optBoolean("push_configured")
             )
-        } catch (_: CancellationException) {
-            throw
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             // Keep account screens usable if optional settings are unavailable.
         }
