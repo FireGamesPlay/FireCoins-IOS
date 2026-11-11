@@ -5,16 +5,32 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class ApiClient(context: Context) {
     private val sessionStore = SessionStore(context.applicationContext)
     private val refreshMutex = Mutex()
+    private val proofHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    private data class ProofHttpResult(
+        val statusCode: Int,
+        val contentType: String?,
+        val body: ByteArray?,
+        val errorBody: String
+    )
 
     val hasSession: Boolean
         get() = !sessionStore.refreshToken.isNullOrBlank()
@@ -66,53 +82,6 @@ class ApiClient(context: Context) {
                 .put("reset_token", resetToken)
                 .put("confirmation", confirmation)
         )
-    }
-
-    suspend fun uploadAvatar(imageBytes: ByteArray) {
-        require(imageBytes.isNotEmpty() && imageBytes.size <= MAX_AVATAR_BYTES) {
-            "Аватар должен быть изображением размером до 4 МБ."
-        }
-        val boundary = "FireCoins-Avatar-${UUID.randomUUID()}"
-        val result = withContext(Dispatchers.IO) {
-            val connection = openConnection("/api/profile/avatar", "POST", authenticated = true)
-            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-            connection.doOutput = true
-            connection.outputStream.use { output ->
-                output.write("--$boundary\r\n".toByteArray())
-                output.write("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\r\n".toByteArray())
-                output.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
-                output.write(imageBytes)
-                output.write("\r\n--$boundary--\r\n".toByteArray())
-            }
-            readResponse(connection)
-        }
-        if (result.first !in 200..299) {
-            throw IOException(result.second.optJSONObject("error")?.optString("message").orEmpty().ifBlank { "Не удалось сохранить аватар." })
-        }
-    }
-
-    suspend fun downloadAvatar(role: String): ByteArray? = withContext(Dispatchers.IO) {
-        val connection = openConnection("/api/profile/avatar/$role", "GET", authenticated = true)
-        try {
-            val code = connection.responseCode
-            if (code == HttpURLConnection.HTTP_NOT_FOUND) return@withContext null
-            if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                throw IOException("Сессия истекла. Обновите аккаунт.")
-            }
-            if (code !in 200..299) {
-                val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                throw IOException(parseError(text, code))
-            }
-            val type = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
-            if (!type.startsWith("image/")) throw IOException("Сервер вернул некорректный аватар.")
-            val bytes = connection.inputStream.use { it.readBytes() }
-            if (bytes.isEmpty() || bytes.size > MAX_AVATAR_BYTES || !isSupportedImage(bytes)) {
-                throw IOException("Файл аватара повреждён.")
-            }
-            bytes
-        } finally {
-            connection.disconnect()
-        }
     }
 
     suspend fun registerPushToken(token: String, deviceId: String) {
@@ -202,71 +171,63 @@ class ApiClient(context: Context) {
         retryAfterRefresh: Boolean
     ): ByteArray {
         require(transactionId > 0) { "Некорректный идентификатор фотографии." }
-        return withContext(Dispatchers.IO) {
-            val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
-            try {
-                connection.connectTimeout = 12_000
-                connection.readTimeout = 20_000
-                connection.setRequestProperty("Accept", "image/*")
-                connection.setRequestProperty("Accept-Encoding", "identity")
-                connection.setRequestProperty("Connection", "close")
-                val code = connection.responseCode
-                if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
-                    connection.disconnect()
-                    refreshSession()
-                    return@withContext downloadProofInternal(transactionId, retryAfterRefresh = false)
-                }
-                if (code !in 200..299) {
-                    val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                    throw IOException(parseError(text, code))
-                }
+        val accessToken = sessionStore.accessToken
+            ?: throw IOException("Нет активной сессии.")
 
-                val contentType = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
-                val declaredLength = connection.contentLengthLong
-                if (declaredLength > MAX_PROOF_BYTES) {
-                    throw IOException("Фотография слишком большая для просмотра.")
-                }
+        val request = Request.Builder()
+            .url("$BASE_URL/api/proof/$transactionId")
+            .header("Authorization", "Bearer $accessToken")
+            .header("Accept", "image/*")
+            .header("Accept-Encoding", "identity")
+            .header("Cache-Control", "no-cache")
+            .get()
+            .build()
 
-                connection.inputStream.use { input ->
-                    val output = ByteArrayOutputStream(
-                        if (declaredLength in 1..MAX_PROOF_BYTES) declaredLength.toInt() else 32 * 1024
-                    )
-                    val buffer = ByteArray(16 * 1024)
-                    var total = 0L
-
-                    // When Content-Length is present, read exactly that many bytes.
-                    // Do not wait for a keep-alive socket to signal EOF after the body.
-                    while (declaredLength < 0 || total < declaredLength) {
-                        val remaining = if (declaredLength >= 0) declaredLength - total else buffer.size.toLong()
-                        val chunkSize = minOf(buffer.size.toLong(), remaining).toInt()
-                        val count = input.read(buffer, 0, chunkSize)
-                        if (count < 0) {
-                            if (declaredLength >= 0 && total != declaredLength) {
-                                throw IOException("Сервер оборвал передачу фотографии.")
-                            }
-                            break
-                        }
-                        total += count
-                        if (total > MAX_PROOF_BYTES) {
-                            throw IOException("Фотография слишком большая для просмотра.")
-                        }
-                        output.write(buffer, 0, count)
+        val result = withContext(Dispatchers.IO) {
+            proofHttpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body
+                if (response.code in 200..299) {
+                    val body = responseBody
+                        ?: throw IOException("Сервер вернул пустой ответ с фотографией.")
+                    val declaredLength = body.contentLength()
+                    if (declaredLength > MAX_PROOF_BYTES) {
+                        throw IOException("Фотография слишком большая для просмотра.")
                     }
-
-                    if (declaredLength >= 0 && total != declaredLength) {
+                    val contentType = body.contentType()?.let { "${it.type}/${it.subtype}" }
+                    val bytes = body.bytes()
+                    if (declaredLength >= 0 && bytes.size.toLong() != declaredLength) {
                         throw IOException("Фотография загрузилась не полностью.")
                     }
-                    val bytes = output.toByteArray()
-                    if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
-                    if (!contentType.startsWith("image/") && !isSupportedImage(bytes)) {
-                        throw IOException("Сервер вернул не фотографию. Попробуйте обновить приложение.")
-                    }
-                    bytes
+                    ProofHttpResult(response.code, contentType, bytes, "")
+                } else {
+                    ProofHttpResult(
+                        response.code,
+                        null,
+                        null,
+                        responseBody?.string().orEmpty()
+                    )
                 }
-            } finally {
-                connection.disconnect()
             }
         }
+
+        if (result.statusCode == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
+            refreshSession()
+            return downloadProofInternal(transactionId, retryAfterRefresh = false)
+        }
+        if (result.statusCode !in 200..299) {
+            throw IOException(parseError(result.errorBody, result.statusCode))
+        }
+
+        val bytes = result.body
+            ?: throw IOException("Сервер вернул пустую фотографию.")
+        if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
+        if (bytes.size > MAX_PROOF_BYTES) {
+            throw IOException("Фотография слишком большая для просмотра.")
+        }
+        if (!result.contentType.orEmpty().startsWith("image/") || !isSupportedImage(bytes)) {
+            throw IOException("Сервер вернул некорректный файл фотографии.")
+        }
+        return bytes
     }
 
     private suspend fun call(
@@ -401,6 +362,5 @@ class ApiClient(context: Context) {
     private companion object {
         const val BASE_URL = "https://app.firegames-it.tech"
         const val MAX_PROOF_BYTES = 12L * 1024L * 1024L
-        const val MAX_AVATAR_BYTES = 4 * 1024 * 1024
     }
 }
