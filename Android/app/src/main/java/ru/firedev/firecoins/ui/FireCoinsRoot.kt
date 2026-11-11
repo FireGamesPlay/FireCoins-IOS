@@ -1073,29 +1073,7 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     var noteText by remember { mutableStateOf("") }
     var settingsOpen by remember { mutableStateOf(false) }
     var resetOpen by remember { mutableStateOf(false) }
-    var avatarLoading by remember { mutableStateOf(false) }
-    var avatarError by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val title = if (state.role == "father") "Макс" else "Артемий"
-    val avatar = remember(state.avatarBytes) {
-        state.avatarBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
-    }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                avatarLoading = true
-                avatarError = null
-                try {
-                    viewModel.uploadAvatar(readAvatarBytes(context, uri))
-                } catch (error: Exception) {
-                    avatarError = error.message ?: "Не удалось прочитать выбранное изображение."
-                } finally {
-                    avatarLoading = false
-                }
-            }
-        }
-    }
 
     ScrollColumn {
         ScreenHeading("Профиль", "Настройки аккаунта и связь внутри системы.")
@@ -1105,38 +1083,17 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(contentAlignment = Alignment.BottomEnd) {
-                    if (avatar != null) {
-                        Image(
-                            bitmap = avatar,
-                            contentDescription = "Аватар профиля",
-                            modifier = Modifier.size(66.dp).clip(CircleShape).border(1.dp, FcBorder, CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier.size(66.dp).clip(CircleShape)
-                                .background(FcSurfaceElevated).border(1.dp, FcBorder, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(if (state.role == "father") "М" else "А", color = FcAccentLight, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    IconButton(
-                        onClick = { photoPicker.launch("image/*") },
-                        enabled = !avatarLoading && !state.isLoading,
-                        modifier = Modifier.size(29.dp).background(FcAccent, CircleShape)
-                    ) {
-                        if (avatarLoading || state.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = Color.Black,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Outlined.PhotoCamera, contentDescription = "Изменить аватар", tint = Color.Black, modifier = Modifier.size(16.dp))
-                        }
-                    }
+                Box(
+                    modifier = Modifier.size(66.dp).clip(CircleShape)
+                        .background(FcSurfaceElevated).border(1.dp, FcBorder, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (state.role == "father") "М" else "А",
+                        color = FcAccentLight,
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(title, color = FcText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
@@ -1151,7 +1108,6 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
                 }
             }
         }
-        avatarError?.let { Text(it, color = FcNegative, fontSize = 11.sp) }
         SurfaceCard {
             SectionTitle("Личные заметки")
             FcTextField(noteText, { noteText = it }, "Напиши сообщение…")
@@ -1380,15 +1336,6 @@ private fun ResetDatabaseDialog(
         }
     )
 }
-
-private suspend fun readAvatarBytes(context: Context, uri: Uri): ByteArray =
-    readCompressedImage(
-        context = context,
-        uri = uri,
-        maxDimension = 1024,
-        maxBytes = 4 * 1024 * 1024,
-        tooLargeMessage = "Аватар должен быть не больше 4 МБ."
-    )
 
 private suspend fun readProofBytes(context: Context, uri: Uri): ByteArray =
     readCompressedImage(
