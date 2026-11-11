@@ -187,7 +187,7 @@ def authed_unscoped(handler: Handler) -> Callable[[web.Request], Awaitable[web.S
         return await handler(request, user)
 
     return wrapper'''
-    source = replace_function(source, "authed", authed)
+    source = replace_function(source, "authed", authed, async_expected=False)
 
     health = '''async def health(_: web.Request) -> web.Response:
     return json_response(
