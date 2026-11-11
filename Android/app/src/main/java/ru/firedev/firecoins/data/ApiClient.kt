@@ -1,37 +1,34 @@
 package ru.firedev.firecoins.data
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 class ApiClient(context: Context) {
     private val sessionStore = SessionStore(context.applicationContext)
     private val refreshMutex = Mutex()
-    private val proofHttpClient = OkHttpClient.Builder()
+    private val httpClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
-    private data class ProofHttpResult(
+    private data class HttpResult(
         val statusCode: Int,
         val contentType: String?,
         val body: ByteArray?,
@@ -143,29 +140,45 @@ class ApiClient(context: Context) {
         call(path, method = "POST", payload = payload)
 
     suspend fun uploadProof(imageBytes: ByteArray, reason: String): String {
-        val boundary = "FireCoins-${UUID.randomUUID()}"
-        val response = withContext(Dispatchers.IO) {
-            val connection = openConnection("/api/upload-proof", "POST", authenticated = true)
-            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-            connection.doOutput = true
-
-            connection.outputStream.use { output ->
-                output.write("--$boundary\r\n".toByteArray())
-                output.write("Content-Disposition: form-data; name=\"reason\"\r\n\r\n".toByteArray())
-                output.write(reason.toByteArray(Charsets.UTF_8))
-                output.write("\r\n--$boundary\r\n".toByteArray())
-                output.write("Content-Disposition: form-data; name=\"photo\"; filename=\"proof.jpg\"\r\n".toByteArray())
-                output.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
-                output.write(imageBytes)
-                output.write("\r\n--$boundary--\r\n".toByteArray())
-            }
-
-            readResponse(connection)
+        require(imageBytes.isNotEmpty() && imageBytes.size.toLong() <= MAX_PROOF_BYTES) {
+            "Фотография пустая или превышает допустимый размер."
         }
-        if (response.first !in 200..299) {
-            throw IOException(response.second.optJSONObject("error")?.optString("message").orEmpty().ifBlank { "Не удалось загрузить фотографию." })
+        return uploadProofInternal(imageBytes, reason, retryAfterRefresh = true)
+    }
+
+    private suspend fun uploadProofInternal(
+        imageBytes: ByteArray,
+        reason: String,
+        retryAfterRefresh: Boolean
+    ): String {
+        val accessToken = sessionStore.accessToken
+            ?: throw IOException("Нет активной сессии.")
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("reason", reason)
+            .addFormDataPart(
+                "photo",
+                "proof.jpg",
+                imageBytes.toRequestBody("image/jpeg".toMediaType())
+            )
+            .build()
+        val request = Request.Builder()
+            .url("$BASE_URL/api/upload-proof")
+            .header("Authorization", "Bearer $accessToken")
+            .header("Accept", "application/json")
+            .post(body)
+            .build()
+
+        val result = awaitHttpResponse(request)
+        if (result.statusCode == 401 && retryAfterRefresh) {
+            refreshSession()
+            return uploadProofInternal(imageBytes, reason, retryAfterRefresh = false)
         }
-        return response.second.optString("proof_file_id").takeIf { it.isNotBlank() }
+        if (result.statusCode !in 200..299) {
+            throw IOException(parseError(result.errorBody, result.statusCode))
+        }
+        val json = JSONObject(result.body?.decodeToString().orEmpty())
+        return json.optString("proof_file_id").takeIf { it.isNotBlank() }
             ?: throw IOException("Сервер не вернул идентификатор фотографии.")
     }
 
