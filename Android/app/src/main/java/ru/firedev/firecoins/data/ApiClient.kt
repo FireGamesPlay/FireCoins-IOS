@@ -206,7 +206,10 @@ class ApiClient(context: Context) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
             try {
                 connection.connectTimeout = 12_000
-                connection.readTimeout = 60_000
+                connection.readTimeout = 20_000
+                connection.setRequestProperty("Accept", "image/*")
+                connection.setRequestProperty("Accept-Encoding", "identity")
+                connection.setRequestProperty("Connection", "close")
                 val code = connection.responseCode
                 if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
                     connection.disconnect()
@@ -230,14 +233,28 @@ class ApiClient(context: Context) {
                     )
                     val buffer = ByteArray(16 * 1024)
                     var total = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
+
+                    // When Content-Length is present, read exactly that many bytes.
+                    // Do not wait for a keep-alive socket to signal EOF after the body.
+                    while (declaredLength < 0 || total < declaredLength) {
+                        val remaining = if (declaredLength >= 0) declaredLength - total else buffer.size.toLong()
+                        val chunkSize = minOf(buffer.size.toLong(), remaining).toInt()
+                        val count = input.read(buffer, 0, chunkSize)
+                        if (count < 0) {
+                            if (declaredLength >= 0 && total != declaredLength) {
+                                throw IOException("Сервер оборвал передачу фотографии.")
+                            }
+                            break
+                        }
                         total += count
                         if (total > MAX_PROOF_BYTES) {
                             throw IOException("Фотография слишком большая для просмотра.")
                         }
                         output.write(buffer, 0, count)
+                    }
+
+                    if (declaredLength >= 0 && total != declaredLength) {
+                        throw IOException("Фотография загрузилась не полностью.")
                     }
                     val bytes = output.toByteArray()
                     if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
