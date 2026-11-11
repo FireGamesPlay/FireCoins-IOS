@@ -6,7 +6,7 @@ import unittest
 from patches import apply_settings_sandbox_avatar_patch as patch
 
 
-class SettingsSandboxAvatarPatchTests(unittest.TestCase):
+class SettingsSandboxPatchTests(unittest.TestCase):
     def test_services_patch_routes_notifications_and_suppresses_telegram_in_sandbox(self) -> None:
         services = """from .telegram_client import TelegramApiError, telegram
 from .workflow_store import workflow_store
