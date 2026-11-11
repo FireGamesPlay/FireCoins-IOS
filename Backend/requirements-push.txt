@@ -1,2 +1,5 @@
 # Required by push_service.py when Firebase credentials are configured.
 google-auth>=2.40,<3
+
+# Normalizes uploaded and migrated JPEG proof files for mobile decoding.
+Pillow>=11,<13
