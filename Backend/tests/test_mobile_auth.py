@@ -122,10 +122,19 @@ class MobileAuthStoreTests(unittest.TestCase):
         user_id, role, _ = self.store.redeem_invitation(replacement, "127.0.0.2")
         self.assertEqual((user_id, role), (111, "father"))
 
-    def test_reissue_rejects_non_admin_role(self) -> None:
+    def test_reissue_allows_each_account_to_rotate_its_own_invitation(self) -> None:
+        codes = self.bootstrap()
+        replacement = self.store.reissue_invitation("artemiy")
+        self.assertNotEqual(replacement, codes["artemiy"])
+        user_id, role, _ = self.store.redeem_invitation(replacement, "127.0.0.9")
+        self.assertEqual((user_id, role), (222, "artemiy"))
+        with self.assertRaises(mobile_auth.MobileAuthError):
+            self.store.redeem_invitation(codes["artemiy"], "127.0.0.10")
+
+    def test_reissue_rejects_unknown_role(self) -> None:
         self.bootstrap()
         with self.assertRaises(mobile_auth.MobileAuthError) as raised:
-            self.store.reissue_invitation("artemiy")
+            self.store.reissue_invitation("unknown")
         self.assertEqual(raised.exception.status, 400)
 
     def test_bootstrap_refuses_to_overwrite_existing_codes(self) -> None:
