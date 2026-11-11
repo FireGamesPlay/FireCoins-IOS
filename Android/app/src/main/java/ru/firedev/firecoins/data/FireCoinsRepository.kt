@@ -66,8 +66,6 @@ class FireCoinsRepository(private val api: ApiClient) {
     suspend fun issueDatabaseResetChallenge(): String = api.issueDatabaseResetChallenge()
     suspend fun resetCurrentDatabase(token: String, confirmation: String) =
         api.resetCurrentDatabase(token, confirmation)
-    suspend fun uploadAvatar(bytes: ByteArray) = api.uploadAvatar(bytes)
-    suspend fun downloadAvatar(role: String): ByteArray? = api.downloadAvatar(role)
     suspend fun registerPushToken(token: String, deviceId: String) = api.registerPushToken(token, deviceId)
     suspend fun restartBackend() = api.restartBackend()
     suspend fun unregisterPushToken(token: String) = api.unregisterPushToken(token)
