@@ -8,7 +8,6 @@ final class AppStore: ObservableObject {
     @Published private(set) var isRestoringSession = true
     @Published private(set) var sessionError: String?
     @Published private(set) var settings = FireCoinsAppSettings()
-    @Published private(set) var avatarData: Data?
 
     private let repository: FireCoinsRepository
     private let sessionManager: FireCoinsSessionManaging?
@@ -66,7 +65,6 @@ final class AppStore: ObservableObject {
         sessionError = nil
         snapshot = repository.snapshot()
         settings = FireCoinsAppSettings()
-        avatarData = nil
     }
 
     func reissueInvitation() async throws -> String {
@@ -80,7 +78,6 @@ final class AppStore: ObservableObject {
         guard let sessionManager, let role = activeRole else { return }
         do {
             settings = try await sessionManager.loadSettings()
-            avatarData = try await sessionManager.loadAvatar(for: role)
         } catch {
             // Profile content remains usable even if optional settings/avatar requests fail.
         }
@@ -89,17 +86,8 @@ final class AppStore: ObservableObject {
     func setSandboxMode(_ enabled: Bool) async throws {
         guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
         settings = try await sessionManager.setSandboxMode(enabled)
-        avatarData = try await sessionManager.loadAvatar(for: activeRole ?? .artemiy)
         try await sessionManager.refreshSnapshot()
         refresh()
-    }
-
-    func uploadAvatar(_ data: Data) async throws {
-        guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
-        try await sessionManager.uploadAvatar(data)
-        // The upload response confirms persistence. Use the selected image immediately
-        // instead of doing a second GET that can keep the profile in a loading state.
-        avatarData = data
     }
 
     func issueDatabaseResetChallenge() async throws -> String {
