@@ -5,9 +5,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONObject
+import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -183,32 +190,7 @@ class ApiClient(context: Context) {
             .get()
             .build()
 
-        val result = withContext(Dispatchers.IO) {
-            proofHttpClient.newCall(request).execute().use { response ->
-                val responseBody = response.body
-                if (response.code in 200..299) {
-                    val body = responseBody
-                        ?: throw IOException("Сервер вернул пустой ответ с фотографией.")
-                    val declaredLength = body.contentLength()
-                    if (declaredLength > MAX_PROOF_BYTES) {
-                        throw IOException("Фотография слишком большая для просмотра.")
-                    }
-                    val contentType = body.contentType()?.let { "${it.type}/${it.subtype}" }
-                    val bytes = body.bytes()
-                    if (declaredLength >= 0 && bytes.size.toLong() != declaredLength) {
-                        throw IOException("Фотография загрузилась не полностью.")
-                    }
-                    ProofHttpResult(response.code, contentType, bytes, "")
-                } else {
-                    ProofHttpResult(
-                        response.code,
-                        null,
-                        null,
-                        responseBody?.string().orEmpty()
-                    )
-                }
-            }
-        }
+        val result = awaitProofResponse(request)
 
         if (result.statusCode == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
             refreshSession()
@@ -221,7 +203,7 @@ class ApiClient(context: Context) {
         val bytes = result.body
             ?: throw IOException("Сервер вернул пустую фотографию.")
         if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
-        if (bytes.size > MAX_PROOF_BYTES) {
+        if (bytes.size.toLong() > MAX_PROOF_BYTES) {
             throw IOException("Фотография слишком большая для просмотра.")
         }
         if (!result.contentType.orEmpty().startsWith("image/") || !isSupportedImage(bytes)) {
@@ -229,6 +211,58 @@ class ApiClient(context: Context) {
         }
         return bytes
     }
+
+    private suspend fun awaitProofResponse(request: Request): ProofHttpResult =
+        suspendCancellableCoroutine { continuation ->
+            val call = proofHttpClient.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, error: IOException) {
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(error)
+                    }
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val result = response.use { current ->
+                            val responseBody = current.body
+                            if (current.code in 200..299) {
+                                val body = responseBody
+                                    ?: throw IOException("Сервер вернул пустой ответ с фотографией.")
+                                val declaredLength = body.contentLength()
+                                if (declaredLength > MAX_PROOF_BYTES) {
+                                    throw IOException("Фотография слишком большая для просмотра.")
+                                }
+
+                                val contentType = body.contentType()?.let { "${it.type}/${it.subtype}" }
+                                val bytes = body.bytes()
+                                if (declaredLength >= 0 && bytes.size.toLong() != declaredLength) {
+                                    throw IOException("Фотография загрузилась не полностью.")
+                                }
+                                ProofHttpResult(current.code, contentType, bytes, "")
+                            } else {
+                                ProofHttpResult(
+                                    current.code,
+                                    null,
+                                    null,
+                                    responseBody?.string().orEmpty()
+                                )
+                            }
+                        }
+
+                        if (continuation.isActive) {
+                            continuation.resume(result)
+                        }
+                    } catch (error: Exception) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(error)
+                        }
+                    }
+                }
+            })
+        }
 
     private suspend fun call(
         path: String,
