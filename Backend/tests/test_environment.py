@@ -16,7 +16,9 @@ config_stub.POINTS_DB_PATH = Path("/tmp/firecoins-points-environment-test.db")
 config_stub.MOBILE_AUTH_STORE_PATH = Path("/tmp/firecoins-mobile-auth-environment-test.json")
 config_stub.MOBILE_STATE_STORE_PATH = Path("/tmp/firecoins-mobile-state-environment-test.json")
 config_stub.get_role = lambda user_id: {111: "father", 222: "artemiy"}.get(user_id, "unknown")
-sys.modules.setdefault("api.config", config_stub)
+import api
+sys.modules["api.config"] = config_stub
+api.config = config_stub
 
 from api.environment import DatabaseMode, DatabaseModeError
 
