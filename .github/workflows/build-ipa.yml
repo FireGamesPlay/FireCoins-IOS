@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - v2-development
-      - fix/firecoins-final-photo-loading-20261111
     paths:
       - "App/**"
       - "Core/**"
@@ -32,8 +31,8 @@ jobs:
           set -euo pipefail
           # Push-triggered production releases remain restricted to v2-development.
           # Manual workflow_dispatch builds may validate a feature branch before merge.
-          if [[ "$GITHUB_REF" != "refs/heads/v2-development" && "$GITHUB_REF" != "refs/heads/fix/firecoins-final-photo-loading-20261111" ]]; then
-            echo "::error::IPA builds are limited to v2-development and the current verification branch. Selected ref: $GITHUB_REF"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" != "refs/heads/v2-development" ]]; then
+            echo "::error::Push-triggered IPA releases must run from v2-development. Selected ref: $GITHUB_REF"
             exit 1
           fi
           echo "Building source from $GITHUB_REF at $GITHUB_SHA"
