@@ -40,7 +40,7 @@ class ProfileStoreTests(unittest.TestCase):
             with self.assertRaises(ProfileStoreError):
                 store.save(222, b"not an image")
             with self.assertRaises(ProfileStoreError):
-                store.save(JPEG + b"x" * (4 * 1024 * 1024))
+                store.save(222, JPEG + b"x" * (4 * 1024 * 1024))
 
 
 if __name__ == "__main__":
