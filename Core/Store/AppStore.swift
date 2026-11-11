@@ -97,7 +97,9 @@ final class AppStore: ObservableObject {
     func uploadAvatar(_ data: Data) async throws {
         guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
         try await sessionManager.uploadAvatar(data)
-        avatarData = try await sessionManager.loadAvatar(for: activeRole ?? .artemiy)
+        // The upload response confirms persistence. Use the selected image immediately
+        // instead of doing a second GET that can keep the profile in a loading state.
+        avatarData = data
     }
 
     func issueDatabaseResetChallenge() async throws -> String {
