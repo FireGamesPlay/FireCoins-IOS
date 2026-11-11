@@ -159,8 +159,8 @@ def build_server_source(source: str) -> str:
     source = replace_once(
         source,
         "from .config import (\n    API_HOST,\n    API_PORT,\n    FATHER_ID,\n",
-        "from .config import (\n    API_HOST,\n    API_PORT,\n    ARTEMIY_ID,\n    FATHER_ID,\n",
-        "configured account IDs import",
+        "from .config import (\n    API_HOST,\n    API_PORT,\n    FATHER_ID,\n",
+        "configured account ID import",
     )
     source = replace_once(
         source,
