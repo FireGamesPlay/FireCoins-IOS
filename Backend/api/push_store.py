@@ -118,6 +118,7 @@ class PushStore:
 
 
 
-from .config import MOBILE_AUTH_STORE_PATH
+from .config import POINTS_DB_PATH
 
-push_store = PushStore(MOBILE_AUTH_STORE_PATH.parent / "push_devices.json")
+_PRIVATE_ROOT = Path(POINTS_DB_PATH).expanduser().resolve().parent / ".private"
+push_store = PushStore(_PRIVATE_ROOT / "push_devices.json")
