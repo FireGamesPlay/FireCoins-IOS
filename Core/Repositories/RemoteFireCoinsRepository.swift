@@ -163,7 +163,6 @@ private enum FireCoinsRemoteError: LocalizedError {
     case missingSession
     case unsupportedRole
     case invalidIdentifier
-    case notFound
     case server(String)
     case imageUploadFailed
 
@@ -179,8 +178,6 @@ private enum FireCoinsRemoteError: LocalizedError {
             return "Сервер вернул неизвестную роль аккаунта."
         case .invalidIdentifier:
             return "Не удалось определить идентификатор операции."
-        case .notFound:
-            return "Данные не найдены."
         case .server(let message):
             return message
         case .imageUploadFailed:
@@ -329,34 +326,6 @@ private final class FireCoinsAPIClient {
             "/api/settings/database/reset",
             payload: ["reset_token": resetToken, "confirmation": confirmation]
         )
-    }
-
-    func uploadAvatar(_ imageData: Data) async throws {
-        let boundary = "FireCoins-Avatar-\(UUID().uuidString)"
-        var body = Data()
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\r\n")
-        body.append("Content-Type: image/jpeg\r\n\r\n")
-        body.append(imageData)
-        body.append("\r\n--\(boundary)--\r\n")
-        _ = try await sendData(
-            path: "/api/profile/avatar",
-            method: "POST",
-            body: body,
-            contentType: "multipart/form-data; boundary=\(boundary)"
-        )
-    }
-
-    func downloadAvatar(for role: AppRole) async throws -> Data? {
-        do {
-            return try await sendData(
-                path: "/api/profile/avatar/\(role.rawValue)",
-                method: "GET",
-                contentType: nil
-            )
-        } catch FireCoinsRemoteError.notFound {
-            return nil
-        }
     }
 
     func registerPushToken(_ token: String, deviceID: String) async throws {
@@ -563,9 +532,6 @@ private final class FireCoinsAPIClient {
             if http.statusCode == 401 {
                 throw FireCoinsRemoteError.unauthorized
             }
-            if http.statusCode == 404, envelope?.error?.code == "avatar_not_found" {
-                throw FireCoinsRemoteError.notFound
-            }
             throw FireCoinsRemoteError.server(message)
         }
         return data
@@ -683,15 +649,6 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         try await api.resetCurrentDatabase(resetToken: resetToken, confirmation: confirmation)
     }
 
-    func uploadAvatar(_ data: Data) async throws {
-        let jpeg = try Self.normalizedAvatarJPEG(data)
-        try await api.uploadAvatar(jpeg)
-    }
-
-    func loadAvatar(for role: AppRole) async throws -> Data? {
-        try await api.downloadAvatar(for: role)
-    }
-
     func registerPushToken(_ token: String, deviceID: String) async throws {
         try await api.registerPushToken(token, deviceID: deviceID)
     }
@@ -703,15 +660,6 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
     func restartBackend() async throws {
         guard currentRole == .father else { throw FireCoinsRemoteError.unauthorized }
         try await api.restartBackend()
-    }
-
-    private static func normalizedAvatarJPEG(_ data: Data) throws -> Data {
-        guard let image = UIImage(data: data),
-              let jpeg = image.jpegData(compressionQuality: 0.86),
-              jpeg.count <= 4 * 1024 * 1024 else {
-            throw FireCoinsRemoteError.server("Аватар должен быть изображением JPEG размером до 4 МБ.")
-        }
-        return jpeg
     }
 
     func refreshSnapshot() async throws {
