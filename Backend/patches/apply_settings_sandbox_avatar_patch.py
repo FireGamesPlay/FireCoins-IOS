@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import os
 import shutil
 import tempfile
@@ -387,5 +388,4 @@ def apply() -> Path:
 
 
 if __name__ == "__main__":
-    import contextlib
     apply()
