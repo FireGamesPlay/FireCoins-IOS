@@ -204,7 +204,7 @@ class ApiClient(context: Context) {
 
         val result = awaitHttpResponse(request)
 
-        if (result.statusCode == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
+        if (result.statusCode == 401 && retryAfterRefresh) {
             refreshSession()
             return downloadProofInternal(transactionId, retryAfterRefresh = false)
         }
@@ -283,27 +283,37 @@ class ApiClient(context: Context) {
         authenticated: Boolean = true,
         retryAfterRefresh: Boolean = true
     ): JSONObject {
-        val result = withContext(Dispatchers.IO) {
-            val connection = openConnection(path, method, authenticated)
-            if (payload != null) {
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-            }
-            readResponse(connection)
+        val builder = Request.Builder()
+            .url("$BASE_URL$path")
+            .header("Accept", "application/json")
+
+        if (authenticated) {
+            val token = sessionStore.accessToken ?: throw IOException("Нет активной сессии.")
+            builder.header("Authorization", "Bearer $token")
         }
 
-        if (result.first == 401 && authenticated && retryAfterRefresh) {
+        val body = payload?.toString()?.toRequestBody(JSON_MEDIA_TYPE)
+        if (method == "GET" && body == null) {
+            builder.get()
+        } else {
+            builder.method(method, body)
+        }
+
+        val result = awaitHttpResponse(builder.build())
+        if (result.statusCode == 401 && authenticated && retryAfterRefresh) {
             refreshSession()
             return call(path, method, payload, authenticated, retryAfterRefresh = false)
         }
-
-        if (result.first !in 200..299) {
-            val message = result.second.optJSONObject("error")?.optString("message")
-                ?.takeIf { !it.isNullOrBlank() } ?: "Ошибка сервера (${result.first})."
-            throw IOException(message)
+        if (result.statusCode !in 200..299) {
+            throw IOException(parseError(result.errorBody, result.statusCode))
         }
-        return result.second
+
+        val responseText = result.body?.decodeToString().orEmpty()
+        return if (responseText.isBlank()) JSONObject() else try {
+            JSONObject(responseText)
+        } catch (_: Exception) {
+            throw IOException("Сервер вернул некорректный ответ.")
+        }
     }
 
     private suspend fun refreshSession() = refreshMutex.withLock {
@@ -312,25 +322,34 @@ class ApiClient(context: Context) {
             throw IOException("Сессия истекла. Войдите по приглашению ещё раз.")
         }
 
-        val result = withContext(Dispatchers.IO) {
-            val connection = openConnection("/api/mobile/refresh", "POST", authenticated = false)
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            connection.outputStream.use {
-                it.write(JSONObject().put("refresh_token", refresh).toString().toByteArray(Charsets.UTF_8))
-            }
-            readResponse(connection)
-        }
+        val body = JSONObject()
+            .put("refresh_token", refresh)
+            .toString()
+            .toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url("$BASE_URL/api/mobile/refresh")
+            .header("Accept", "application/json")
+            .post(body)
+            .build()
+        val result = awaitHttpResponse(request)
 
-        if (result.first == 401) {
+        if (result.statusCode == 401) {
             sessionStore.clear()
             throw IOException("Сессия истекла. Войдите по приглашению ещё раз.")
         }
-        if (result.first !in 200..299) {
-            throw IOException(result.second.optJSONObject("error")?.optString("message")
-                .orEmpty().ifBlank { "Не удалось обновить сессию. Проверьте соединение." })
+        if (result.statusCode !in 200..299) {
+            throw IOException(
+                parseError(result.errorBody, result.statusCode)
+                    .ifBlank { "Не удалось обновить сессию. Проверьте соединение." }
+            )
         }
-        val session = result.second.optJSONObject("session")
+
+        val json = try {
+            JSONObject(result.body?.decodeToString().orEmpty())
+        } catch (_: Exception) {
+            throw IOException("Сервер вернул некорректную сессию.")
+        }
+        val session = json.optJSONObject("session")
             ?: throw IOException("Сервер вернул некорректную сессию.")
         storeSession(session)
     }
@@ -342,35 +361,6 @@ class ApiClient(context: Context) {
             throw IOException("Сервер вернул неполную сессию.")
         }
         sessionStore.save(access, refresh)
-    }
-
-    private fun openConnection(path: String, method: String, authenticated: Boolean): HttpURLConnection {
-        val url = URL("$BASE_URL$path")
-        return (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 20_000
-            readTimeout = 45_000
-            useCaches = false
-            setRequestProperty("Accept", "application/json")
-            if (authenticated) {
-                val token = sessionStore.accessToken ?: throw IOException("Нет активной сессии.")
-                setRequestProperty("Authorization", "Bearer $token")
-            }
-        }
-    }
-
-    private fun readResponse(connection: HttpURLConnection): Pair<Int, JSONObject> {
-        try {
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            val json = if (text.isBlank()) JSONObject() else runCatching { JSONObject(text) }.getOrElse {
-                JSONObject().put("error", JSONObject().put("message", "Сервер вернул некорректный ответ."))
-            }
-            return code to json
-        } finally {
-            connection.disconnect()
-        }
     }
 
     private fun isSupportedImage(bytes: ByteArray): Boolean {
@@ -407,6 +397,7 @@ class ApiClient(context: Context) {
 
     private companion object {
         const val BASE_URL = "https://app.firegames-it.tech"
+        val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val MAX_PROOF_BYTES = 12L * 1024L * 1024L
     }
 }
