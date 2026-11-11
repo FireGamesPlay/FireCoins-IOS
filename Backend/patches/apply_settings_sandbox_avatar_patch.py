@@ -289,7 +289,7 @@ async def mobile_push_unregister(request: web.Request, user: MiniAppUser) -> web
     return json_response({"ok": True, "removed": removed})
 '''
     anchor = "def create_app() -> web.Application:\n"
-    source = replace_once(source, anchor, handlers + "\n\n" + anchor, "new settings/avatar/push handlers")
+    source = replace_once(source, anchor, handlers + "\n\n" + anchor, "new settings/push handlers")
 
     source = replace_once(
         source,
@@ -351,7 +351,7 @@ def apply() -> Path:
     backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(backup_root, 0o700)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup_dir = backup_root / f"firecoins-settings-sandbox-avatar-{stamp}"
+    backup_dir = backup_root / f"firecoins-settings-sandbox-push-{stamp}"
     backup_dir.mkdir(mode=0o700)
     for path in changes:
         shutil.copy2(path, backup_dir / path.name)
