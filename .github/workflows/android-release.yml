@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - v2-development
-      - fix/firecoins-final-photo-loading-20261111
     paths:
       - "Android/**"
       - ".github/workflows/android-release.yml"
