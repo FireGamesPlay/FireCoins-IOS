@@ -5,7 +5,9 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.tasks.await
 import ru.firedev.firecoins.data.ApiClient
 import ru.firedev.firecoins.data.FireCoinsRepository
@@ -36,7 +38,6 @@ data class AppUiState(
     val isSandbox: Boolean = false,
     val canResetDatabase: Boolean = false,
     val pushConfigured: Boolean = false,
-    val avatarBytes: ByteArray? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,44 +46,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var state = androidx.compose.runtime.mutableStateOf(AppUiState())
         private set
 
+    // The root screen can start overlapping operations. Keep the blocking
+    // overlay visible until every operation has reached its finally block.
+    private var activeLoadingOperations = 0
+
+    private fun beginLoading() {
+        activeLoadingOperations += 1
+        state.value = state.value.copy(isLoading = true)
+    }
+
+    private fun endLoading() {
+        activeLoadingOperations = (activeLoadingOperations - 1).coerceAtLeast(0)
+        state.value = state.value.copy(isLoading = activeLoadingOperations > 0)
+    }
+
     init {
         restoreSession()
     }
 
     fun login(invitationCode: String) {
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, sessionRecovery = false)
+            beginLoading()
+            state.value = state.value.copy(error = null, sessionRecovery = false)
             try {
                 val role = repository.signIn(invitationCode)
                 // Keep the authenticated role as soon as the single-use invitation is accepted.
-                state.value = AppUiState(isLoading = true, role = role)
-                val snapshot = repository.loadSnapshot(role)
-                state.value = snapshot.toUiState(isLoading = false).copy(message = "Вход выполнен.")
+                state.value = AppUiState(isLoading = activeLoadingOperations > 0, role = role)
+                val snapshot = withTimeout(25_000) { repository.loadSnapshot(role) }
+                state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0).copy(message = "Вход выполнен.")
                 refreshProfileData(role)
                 registerPushDevice()
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 state.value = state.value.copy(
-                    isLoading = false,
                     error = error.message ?: "Не удалось войти.",
                     sessionRecovery = state.value.role == null && repository.hasStoredSession()
                 )
+            } finally {
+                endLoading()
             }
         }
     }
 
-    fun logout() {
+        fun logout() {
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true)
-            runCatching {
-                val token = PushDeviceIdentity.token(getApplication())
-                if (!token.isNullOrBlank()) repository.unregisterPushToken(token)
+            beginLoading()
+            try {
+                runCatching {
+                    val token = PushDeviceIdentity.token(getApplication())
+                    if (!token.isNullOrBlank()) repository.unregisterPushToken(token)
+                }
+                runCatching { repository.logout() }
+                state.value = AppUiState(isLoading = activeLoadingOperations > 0)
+            } finally {
+                endLoading()
             }
-            runCatching { repository.logout() }
-            state.value = AppUiState(isLoading = false)
         }
     }
 
-    fun refresh() {
+        fun refresh() {
         val role = state.value.role ?: return
         viewModelScope.launch {
             try {
@@ -131,29 +154,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playCasino(amount: String) {
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, rouletteResult = null)
+            beginLoading()
+            state.value = state.value.copy(error = null, rouletteResult = null)
             try {
-                val result = repository.playCasino(amount.toIntOrNull() ?: 0)
-                val role = state.value.role ?: return@launch
-                val snapshot = repository.loadSnapshot(role)
-                state.value = snapshot.toUiState(isLoading = false).copy(
-                    isSandbox = state.value.isSandbox,
-                    canResetDatabase = state.value.canResetDatabase,
-                    pushConfigured = state.value.pushConfigured,
-                    avatarBytes = state.value.avatarBytes,
-                    rouletteResult = RouletteResult(
-                        won = result.optBoolean("win"),
-                        bet = result.optInt("bet"),
-                        payout = result.optInt("payout")
+                val result = withTimeout(25_000) { repository.playCasino(amount.toIntOrNull() ?: 0) }
+                val role = state.value.role
+                if (role != null) {
+                    val snapshot = withTimeout(25_000) { repository.loadSnapshot(role) }
+                    state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0).copy(
+                        isSandbox = state.value.isSandbox,
+                        canResetDatabase = state.value.canResetDatabase,
+                        pushConfigured = state.value.pushConfigured,
+                        rouletteResult = RouletteResult(
+                            won = result.optBoolean("win"),
+                            bet = result.optInt("bet"),
+                            payout = result.optInt("payout")
+                        )
                     )
-                )
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Не удалось сыграть.")
+                state.value = state.value.copy(error = error.message ?: "Не удалось сыграть.")
+            } finally {
+                endLoading()
             }
         }
     }
 
-    fun sendNote(text: String) {
+        fun sendNote(text: String) {
         execute("Заметка отправлена.") { repository.sendNote(text) }
     }
 
@@ -164,103 +193,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun reissueInvitation() {
         val role = state.value.role ?: return
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, message = null, reissuedInvitationCode = null)
+            beginLoading()
+            state.value = state.value.copy(error = null, message = null, reissuedInvitationCode = null)
             try {
-                val code = repository.reissueInvitation(role)
+                val code = withTimeout(20_000) { repository.reissueInvitation(role) }
                 state.value = state.value.copy(
-                    isLoading = false,
                     reissuedInvitationCode = code,
                     message = "Новый код создан. Сохраните его: он будет показан только сейчас."
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Не удалось перевыпустить код.")
+                state.value = state.value.copy(error = error.message ?: "Не удалось перевыпустить код.")
+            } finally {
+                endLoading()
             }
         }
     }
 
-    fun toggleSandbox(enabled: Boolean) {
+        fun toggleSandbox(enabled: Boolean) {
         val role = state.value.role ?: return
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, message = null)
+            beginLoading()
+            state.value = state.value.copy(error = null, message = null)
             try {
-                val settings = repository.setSandboxMode(enabled)
-                val snapshot = repository.loadSnapshot(role)
+                val settings = withTimeout(20_000) { repository.setSandboxMode(enabled) }
+                val snapshot = withTimeout(25_000) { repository.loadSnapshot(role) }
                 val environment = settings.optJSONObject("environment")
-                state.value = snapshot.toUiState(isLoading = false).copy(
+                state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0).copy(
                     isSandbox = environment?.optBoolean("is_sandbox", enabled) ?: enabled,
                     canResetDatabase = settings.optBoolean("can_reset_database", role == "father"),
                     pushConfigured = settings.optBoolean("push_configured"),
-                    avatarBytes = repository.downloadAvatar(role),
                     message = if (enabled) "Тестовая среда включена. Рабочая база не изменена."
                         else "Тестовые данные удалены. Рабочая среда восстановлена."
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Не удалось переключить среду.")
+                state.value = state.value.copy(error = error.message ?: "Не удалось переключить среду.")
                 refreshProfileData(role)
+            } finally {
+                endLoading()
             }
         }
     }
 
-    fun resetCurrentDatabase(confirmation: String) {
+        fun resetCurrentDatabase(confirmation: String) {
         if (state.value.role != "father" || confirmation != "УДАЛИТЬ БД") return
         val role = state.value.role ?: return
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, message = null)
+            beginLoading()
+            state.value = state.value.copy(error = null, message = null)
             try {
-                val challenge = repository.issueDatabaseResetChallenge()
-                repository.resetCurrentDatabase(challenge, confirmation)
-                val snapshot = repository.loadSnapshot(role)
-                state.value = snapshot.toUiState(isLoading = false).copy(
+                val challenge = withTimeout(15_000) { repository.issueDatabaseResetChallenge() }
+                withTimeout(20_000) { repository.resetCurrentDatabase(challenge, confirmation) }
+                val snapshot = withTimeout(25_000) { repository.loadSnapshot(role) }
+                state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0).copy(
                     message = "Текущая база очищена. Схема сохранена, баланс установлен в 0."
                 )
                 refreshProfileData(role)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Не удалось сбросить базу.")
+                state.value = state.value.copy(error = error.message ?: "Не удалось сбросить базу.")
+            } finally {
+                endLoading()
             }
         }
     }
 
-    suspend fun uploadAvatar(bytes: ByteArray) {
-        if (state.value.role == null) return
-        state.value = state.value.copy(isLoading = true, error = null, message = null)
-        try {
-            repository.uploadAvatar(bytes)
-            // The upload endpoint confirms the persisted image. Do not make a second
-            // network request just to redraw the avatar: it can leave the UI waiting
-            // after the upload has already succeeded.
-            state.value = state.value.copy(
-                isLoading = false,
-                avatarBytes = bytes.copyOf(),
-                message = "Аватар обновлён."
-            )
-        } catch (error: Exception) {
-            state.value = state.value.copy(
-                isLoading = false,
-                error = error.message ?: "Не удалось загрузить аватар."
-            )
-        }
-    }
+    
 
-    fun restartBackend() {
+        fun restartBackend() {
         if (state.value.role != "father") return
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, message = null)
+            beginLoading()
+            state.value = state.value.copy(error = null, message = null)
             try {
-                repository.restartBackend()
+                withTimeout(15_000) { repository.restartBackend() }
                 state.value = state.value.copy(
-                    isLoading = false,
                     message = "Перезапуск Backend запланирован. Приложение переподключится автоматически."
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state.value = state.value.copy(
-                    isLoading = false,
-                    error = error.message ?: "Не удалось перезапустить Backend."
-                )
+                state.value = state.value.copy(error = error.message ?: "Не удалось перезапустить Backend.")
+            } finally {
+                endLoading()
             }
         }
     }
 
-    fun registerPushDevice() {
+        fun registerPushDevice() {
         if (state.value.role == null) return
         viewModelScope.launch {
             try {
@@ -286,26 +310,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state.value = state.value.copy(
                 isSandbox = environment?.optBoolean("is_sandbox", false) ?: false,
                 canResetDatabase = settings.optBoolean("can_reset_database", role == "father"),
-                pushConfigured = settings.optBoolean("push_configured"),
-                avatarBytes = repository.downloadAvatar(role)
+                pushConfigured = settings.optBoolean("push_configured")
             )
         } catch (_: Exception) {
-            // Keep account screens available if an optional profile request fails.
+            // Keep account screens available if an optional settings request fails.
         }
     }
 
-    private fun applySnapshot(snapshot: FireCoinsSnapshot) {
+        private fun applySnapshot(snapshot: FireCoinsSnapshot) {
         val previous = state.value
-        state.value = snapshot.toUiState(isLoading = false).copy(
+        state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0).copy(
             isSandbox = previous.isSandbox,
             canResetDatabase = previous.canResetDatabase,
             pushConfigured = previous.pushConfigured,
-            avatarBytes = previous.avatarBytes,
             reissuedInvitationCode = previous.reissuedInvitationCode
         )
     }
 
-    fun clearMessage() {
+        fun clearMessage() {
         state.value = state.value.copy(message = null, error = null)
     }
 
@@ -315,57 +337,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreSession() {
         viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null)
+            beginLoading()
+            state.value = state.value.copy(error = null)
             try {
-                val role = repository.restoreSession()
+                val role = withTimeout(20_000) { repository.restoreSession() }
                 if (role == null) {
-                    state.value = AppUiState(isLoading = false)
+                    state.value = AppUiState(isLoading = activeLoadingOperations > 0)
                 } else {
                     // Authentication succeeded. A later snapshot outage must not discard the role.
-                    state.value = AppUiState(isLoading = true, role = role)
-                    state.value = repository.loadSnapshot(role).toUiState(isLoading = false)
+                    state.value = AppUiState(isLoading = activeLoadingOperations > 0, role = role)
+                    val snapshot = withTimeout(25_000) { repository.loadSnapshot(role) }
+                    state.value = snapshot.toUiState(isLoading = activeLoadingOperations > 0)
                     refreshProfileData(role)
                     registerPushDevice()
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 val message = error.message ?: "Не удалось восстановить сессию."
                 val current = state.value
                 state.value = if (current.role != null) {
-                    current.copy(isLoading = false, error = message)
+                    current.copy(error = message)
                 } else {
                     AppUiState(
-                        isLoading = false,
+                        isLoading = activeLoadingOperations > 0,
                         sessionRecovery = repository.hasStoredSession(),
                         error = message
                     )
                 }
+            } finally {
+                endLoading()
             }
         }
     }
 
-    private fun execute(
-        successMessage: String,
-        onSuccess: () -> Unit = {},
-        action: suspend () -> Unit
-    ) {
-        viewModelScope.launch {
-            state.value = state.value.copy(isLoading = true, error = null, message = null)
-            try {
-                action()
-                // The mutation is already committed. Let the form clear now, even if
-                // the subsequent snapshot refresh has a temporary network failure.
-                onSuccess()
-                val role = state.value.role ?: return@launch
-                val snapshot = repository.loadSnapshot(role)
-                applySnapshot(snapshot)
-                state.value = state.value.copy(message = successMessage)
-            } catch (error: Exception) {
-                state.value = state.value.copy(isLoading = false, error = error.message ?: "Операция не выполнена.")
-            }
-        }
-    }
-
-    private fun FireCoinsSnapshot.toUiState(isLoading: Boolean): AppUiState = AppUiState(
+        private fun FireCoinsSnapshot.toUiState(isLoading: Boolean): AppUiState = AppUiState(
         isLoading = isLoading,
         role = role,
         balance = balance,
