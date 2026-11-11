@@ -202,7 +202,7 @@ class ApiClient(context: Context) {
             .get()
             .build()
 
-        val result = awaitProofResponse(request)
+        val result = awaitHttpResponse(request)
 
         if (result.statusCode == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
             refreshSession()
@@ -224,9 +224,9 @@ class ApiClient(context: Context) {
         return bytes
     }
 
-    private suspend fun awaitProofResponse(request: Request): ProofHttpResult =
+    private suspend fun awaitHttpResponse(request: Request): HttpResult =
         suspendCancellableCoroutine { continuation ->
-            val call = proofHttpClient.newCall(request)
+            val call = httpClient.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
 
             call.enqueue(object : Callback {
@@ -253,9 +253,9 @@ class ApiClient(context: Context) {
                                 if (declaredLength >= 0 && bytes.size.toLong() != declaredLength) {
                                     throw IOException("Фотография загрузилась не полностью.")
                                 }
-                                ProofHttpResult(current.code, contentType, bytes, "")
+                                HttpResult(current.code, contentType, bytes, "")
                             } else {
-                                ProofHttpResult(
+                                HttpResult(
                                     current.code,
                                     null,
                                     null,
