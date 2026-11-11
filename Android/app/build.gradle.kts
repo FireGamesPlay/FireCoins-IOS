@@ -16,8 +16,8 @@ android {
         applicationId = "ru.firedev.firecoins"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.0.1"
+        versionCode = 4
+        versionName = "2.1.0"
     }
 
     signingConfigs {
@@ -55,6 +55,9 @@ android {
 }
 
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
@@ -70,4 +73,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+// Firebase configuration is added later; CI remains buildable without a project file.
+if (file("google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
 }

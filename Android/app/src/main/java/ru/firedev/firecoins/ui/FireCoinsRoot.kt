@@ -1,9 +1,13 @@
 package ru.firedev.firecoins.ui
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import com.google.firebase.FirebaseApp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
@@ -42,14 +46,18 @@ import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.OutlinedButton
@@ -58,6 +66,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -79,12 +88,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
@@ -116,6 +127,23 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     var selectedTab by remember { mutableStateOf("home") }
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.registerPushDevice()
+    }
+    LaunchedEffect(state.role) {
+        if (state.role != null && FirebaseApp.getApps(context).isNotEmpty()) {
+            viewModel.registerPushDevice()
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     var welcomedRole by remember { mutableStateOf<String?>(null) }
     var showWelcome by remember { mutableStateOf(false) }
     var selectedProofBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -235,7 +263,21 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
             }
         },
         topBar = {
-            TopAppBar(
+            Column {
+                if (state.isSandbox) {
+                    Surface(color = FcNegative, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "ТЕСТ РЕЖИМ",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp)
+                        )
+                    }
+                }
+                TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = FcBackground,
                     titleContentColor = FcText,
@@ -252,7 +294,8 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
                         Text("Обновить", color = FcAccent)
                     }
                 }
-            )
+                )
+            }
         },
         bottomBar = {
             Surface(
@@ -868,8 +911,6 @@ private fun AdminScreen(
     var reason by remember { mutableStateOf("Хорошая оценка") }
     var proofBytes by remember { mutableStateOf<ByteArray?>(null) }
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
-    var confirmingReissue by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
@@ -881,34 +922,6 @@ private fun AdminScreen(
 
     ScrollColumn {
         ScreenHeading("Управление", "Администрирование счёта Артемия.")
-        SurfaceCard {
-            SectionTitle("Доступ")
-            Text(
-                "Перевыпуск создаёт новое приглашение для аккаунта администратора и аннулирует предыдущее. Активные сессии не затрагиваются.",
-                color = FcMuted,
-                fontSize = 11.sp,
-                lineHeight = 16.sp
-            )
-            state.reissuedInvitationCode?.let { code ->
-                Text("НОВЫЙ КОД · ПОКАЖЕТСЯ ОДИН РАЗ", color = FcMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-                Text(code, color = FcAccentLight, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                FcSecondaryButton("Скопировать код") {
-                    clipboard.setText(AnnotatedString(code))
-                }
-            }
-            if (confirmingReissue) {
-                Text("Старый код перестанет работать. Продолжить?", color = FcMuted, fontSize = 11.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FcSecondaryButton("Отмена") { confirmingReissue = false }
-                    FcPrimaryButton("Подтвердить") {
-                        confirmingReissue = false
-                        viewModel.reissueInvitation()
-                    }
-                }
-            } else {
-                FcSecondaryButton("Перевыпустить код") { confirmingReissue = true }
-            }
-        }
         SurfaceCard {
             SectionTitle("Операция")
             FcTextField(amount, { amount = it }, "Количество баллов", isNumber = true)
@@ -996,13 +1009,67 @@ private fun WalletScreen(
 @Composable
 private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     var noteText by remember { mutableStateOf("") }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var resetOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val title = if (state.role == "father") "Макс" else "Артемий"
+    val avatar = remember(state.avatarBytes) {
+        state.avatarBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching { readAvatarBytes(context, uri) }
+                    .onSuccess(viewModel::uploadAvatar)
+            }
+        }
+    }
+
     ScrollColumn {
         ScreenHeading("Профиль", "Настройки аккаунта и связь внутри системы.")
         SurfaceCard {
-            Text(title, color = FcText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (state.role == "father") "Администратор" else "Участник", color = FcMuted, fontSize = 12.sp)
-            Text("АКТИВНЫЙ АККАУНТ", color = FcPositive, fontSize = 10.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    if (avatar != null) {
+                        Image(
+                            bitmap = avatar,
+                            contentDescription = "Аватар профиля",
+                            modifier = Modifier.size(66.dp).clip(CircleShape).border(1.dp, FcBorder, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.size(66.dp).clip(CircleShape)
+                                .background(FcSurfaceElevated).border(1.dp, FcBorder, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (state.role == "father") "М" else "А", color = FcAccentLight, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    IconButton(
+                        onClick = { photoPicker.launch("image/*") },
+                        modifier = Modifier.size(29.dp).background(FcAccent, CircleShape)
+                    ) {
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Изменить аватар", tint = Color.Black, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, color = FcText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (state.role == "father") "Администратор" else "Участник", color = FcMuted, fontSize = 12.sp)
+                    Text("АКТИВНЫЙ АККАУНТ", color = FcPositive, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
+                IconButton(
+                    onClick = { settingsOpen = true },
+                    modifier = Modifier.size(42.dp).background(FcSurfaceElevated, CircleShape).border(1.dp, FcBorder, CircleShape)
+                ) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "Настройки профиля", tint = FcAccentLight)
+                }
+            }
         }
         SurfaceCard {
             SectionTitle("Личные заметки")
@@ -1016,7 +1083,247 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
         }
         FcSecondaryButton("Выйти из аккаунта") { viewModel.logout() }
     }
+
+    if (settingsOpen) {
+        ProfileSettingsDialog(state, viewModel, { settingsOpen = false }) { resetOpen = true }
+    }
+    if (resetOpen) {
+        ResetDatabaseDialog(
+            isBusy = state.isLoading,
+            error = state.error,
+            onDismiss = { resetOpen = false },
+            onConfirm = { phrase ->
+                resetOpen = false
+                viewModel.resetCurrentDatabase(phrase)
+            }
+        )
+    }
 }
+
+@Composable
+private fun ProfileSettingsDialog(
+    state: AppUiState,
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit,
+    onReset: () -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    var restartConfirmationOpen by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = FcBackground,
+            border = BorderStroke(1.dp, FcBorder),
+            shadowElevation = 16.dp
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(15.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Настройки", color = FcText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Аккаунт · " + if (state.role == "father") "Макс" else "Артемий", color = FcMuted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = onDismiss) { Text("Готово", color = FcAccentLight) }
+                }
+                SurfaceCard {
+                    SectionTitle("Безопасность аккаунта")
+                    Text(
+                        "Перевыпуск создаёт новый одноразовый код для этого аккаунта. Старый код перестаёт работать, текущая сессия сохраняется.",
+                        color = FcMuted, fontSize = 11.sp, lineHeight = 16.sp
+                    )
+                    FcPrimaryButton("Перевыпустить мой код", enabled = !state.isLoading) {
+                        viewModel.reissueInvitation()
+                    }
+                    state.reissuedInvitationCode?.let { code ->
+                        Text("НОВЫЙ КОД · ПОКАЖЕТСЯ ОДИН РАЗ", color = FcMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(code, color = FcAccentLight, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }) {
+                            Text("Скопировать код", color = FcAccentLight)
+                        }
+                    }
+                }
+                SurfaceCard {
+                    SectionTitle("Среда приложения")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Тестовый режим", color = FcText, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Отдельная пустая база. Операции приложения не затрагивают рабочие данные. Доступно обоим аккаунтам.",
+                                color = FcMuted, fontSize = 10.sp, lineHeight = 15.sp
+                            )
+                        }
+                        Switch(
+                            checked = state.isSandbox,
+                            onCheckedChange = viewModel::toggleSandbox,
+                            enabled = !state.isLoading
+                        )
+                    }
+                    if (state.isSandbox) {
+                        Text("ТЕСТ РЕЖИМ АКТИВЕН", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    } else {
+                        Text("Сейчас используется рабочая база.", color = FcMuted, fontSize = 10.sp)
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = FcSurface,
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.5.dp, FcNegative)
+                ) {
+                    Column(modifier = Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("⚠", color = FcNegative, fontSize = 18.sp)
+                            Text("DANGER ZONE", color = FcNegative, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                        }
+                        Text("Операции в этом разделе могут привести к полной потере данных.", color = FcMuted, fontSize = 11.sp)
+                        if (state.role == "father") {
+                            Button(
+                                onClick = onReset,
+                                enabled = !state.isLoading,
+                                colors = ButtonDefaults.buttonColors(containerColor = FcNegative.copy(alpha = 0.12f), contentColor = FcNegative),
+                                border = BorderStroke(1.dp, FcNegative),
+                                shape = RoundedCornerShape(13.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
+                                    Text("СБРОС ТЕКУЩЕЙ БД", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Полное удаление данных текущей среды", fontSize = 10.sp)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { restartConfirmationOpen = true },
+                                enabled = !state.isLoading,
+                                modifier = Modifier.fillMaxWidth(),
+                                border = BorderStroke(1.dp, FcNegative),
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = FcNegative),
+                                shape = RoundedCornerShape(13.dp)
+                            ) {
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                    Text("ПЕРЕЗАГРУЗИТЬ BACKEND", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Мягкий перезапуск серверного API", fontSize = 10.sp)
+                                }
+                            }
+                        } else {
+                            Text("Сброс и перезапуск Backend доступны только администратору.", color = FcMuted, fontSize = 10.sp)
+                        }
+                        Text(
+                            "В рабочем режиме будут удалены транзакции, заявки и баланс. Операция не создаёт резервную копию и не может быть отменена. В тестовом режиме очищается только песочница.",
+                            color = FcNegative, fontSize = 10.sp, lineHeight = 15.sp
+                        )
+                    }
+                }
+                Text(
+                    if (state.pushConfigured) "Push-сервис настроен на сервере."
+                    else "Системные push-уведомления ожидают подключения Firebase и APNs.",
+                    color = if (state.pushConfigured) FcPositive else FcMuted, fontSize = 10.sp
+                )
+                state.error?.let { Text(it, color = FcNegative, fontSize = 11.sp) }
+                state.message?.let { Text(it, color = FcPositive, fontSize = 11.sp) }
+            }
+        }
+    }
+    if (restartConfirmationOpen) {
+        AlertDialog(
+            onDismissRequest = { if (!state.isLoading) restartConfirmationOpen = false },
+            containerColor = FcSurface,
+            title = { Text("Перезагрузить Backend?", color = FcText, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "API временно станет недоступен на несколько секунд. Данные и база не удаляются.",
+                    color = FcMuted
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        restartConfirmationOpen = false
+                        viewModel.restartBackend()
+                    },
+                    enabled = !state.isLoading
+                ) { Text("Перезагрузить", color = FcNegative, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { restartConfirmationOpen = false },
+                    enabled = !state.isLoading
+                ) { Text("Отмена", color = FcMuted) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ResetDatabaseDialog(
+    isBusy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var phrase by remember { mutableStateOf("") }
+    val matches = phrase == "УДАЛИТЬ БД"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = FcSurface,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("⚠", color = FcNegative, fontSize = 23.sp)
+                Text("Необратимый сброс", color = FcText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Text("Вы действительно хотите полностью удалить текущую базу данных без возможности восстановления?", color = FcText, fontSize = 13.sp)
+                Text("Рабочая база не затрагивается, если включён тестовый режим.", color = FcNegative, fontSize = 11.sp)
+                Text("Для подтверждения вручную введите:", color = FcMuted, fontSize = 11.sp)
+                Text("УДАЛИТЬ БД", color = FcNegative, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                OutlinedTextField(
+                    value = phrase,
+                    onValueChange = { phrase = it },
+                    singleLine = true,
+                    label = { Text("Введите УДАЛИТЬ БД") },
+                    enabled = !isBusy
+                )
+                error?.let { Text(it, color = FcNegative, fontSize = 11.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(phrase) }, enabled = matches && !isBusy) {
+                Text("УДАЛИТЬ", color = FcNegative, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isBusy) { Text("Отмена", color = FcMuted) }
+        }
+    )
+}
+
+private suspend fun readAvatarBytes(context: Context, uri: Uri): ByteArray =
+    withContext(Dispatchers.IO) {
+        val source = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalStateException("Не удалось прочитать выбранное изображение.")
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(source, 0, source.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("Выбранный файл не является изображением.")
+        val sample = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 1600)
+        val decoded = BitmapFactory.decodeByteArray(source, 0, source.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IllegalArgumentException("Не удалось открыть изображение.")
+        val largest = maxOf(decoded.width, decoded.height)
+        val scale = minOf(1f, 1024f / largest.toFloat())
+        val resized = if (scale < 1f) {
+            Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+                (decoded.height * scale).toInt().coerceAtLeast(1), true)
+        } else decoded
+        val output = java.io.ByteArrayOutputStream()
+        if (!resized.compress(Bitmap.CompressFormat.JPEG, 86, output)) throw IllegalStateException("Не удалось обработать изображение.")
+        if (resized !== decoded) decoded.recycle()
+        resized.recycle()
+        output.toByteArray().also {
+            if (it.isEmpty() || it.size > 4 * 1024 * 1024) throw IllegalArgumentException("Аватар должен быть не больше 4 МБ.")
+        }
+    }
 
 @Composable
 private fun TransactionCard(

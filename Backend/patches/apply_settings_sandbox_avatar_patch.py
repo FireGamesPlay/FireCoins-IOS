@@ -52,7 +52,7 @@ def build_services_source(source: str) -> str:
         "from .telegram_client import TelegramApiError, telegram\nfrom .workflow_store import workflow_store\n",
         "from .telegram_client import TelegramApiError, telegram\n"
         "from .workflow_store import get_workflow_store\n"
-        "from .environment import current_database_path\n"
+        "from .environment import current_database_path, current_environment\n"
         "from .push_service import notify_account\n",
         "services environment and notification imports",
     )
@@ -66,16 +66,39 @@ def build_services_source(source: str) -> str:
     source = source.replace("workflow_store.list_notes", "get_workflow_store().list_notes")
 
     notify = '''async def _notify(chat_id: int, text: str, reply_markup: dict[str, Any] | None = None) -> int:
-    # Recipient is selected by the server from the two configured account IDs.
+    # Server-side routing: never accept a notification recipient from the client.
+    normalized = str(text or "").casefold()
+    if "новая заметка" in normalized:
+        event, title = "note_published", "Новая заметка"
+    elif "оспорил транзакцию" in normalized:
+        event, title = "dispute_requested", "Запрос на оспаривание"
+    elif "оспаривание транзакции" in normalized:
+        event, title = "dispute_resolved", "Решение по оспариванию"
+    elif "запросил вывод" in normalized:
+        event, title = "withdrawal_requested", "Запрос на вывод баллов"
+    elif "запрос на вывод" in normalized:
+        event, title = "withdrawal_resolved", "Решение по выводу баллов"
+    elif "начислил" in normalized or "списал" in normalized:
+        event, title = "points_changed", "Изменение баланса"
+    elif "рулетке" in normalized:
+        event, title = "roulette_result", "Результат рулетки"
+    else:
+        event, title = "account_event", "Fire Coins"
+
+    active_environment = current_environment()
+    is_sandbox = bool(active_environment and active_environment.is_sandbox)
+    notification_body = f"ТЕСТ РЕЖИМ\\n{text}" if is_sandbox else str(text)
+    notification_title = f"[ТЕСТ] {title}" if is_sandbox else title
+
     delivered = 0
     try:
-        delivered = await notify_account(int(chat_id), "Fire Coins", text, "account_event")
+        delivered = await notify_account(int(chat_id), notification_title, notification_body, event)
     except Exception:
         logger.exception("Push notification failed")
 
-    # Temporary V1 compatibility channel. Mobile workflows keep working when
-    # TG_BOT_TOKEN is removed and the Telegram bot is retired.
-    if telegram.available:
+    # Legacy Telegram callbacks always write to production. Suppress them in
+    # sandbox so a test notification can never lead to a production mutation.
+    if not is_sandbox and telegram.available:
         try:
             await telegram.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
         except TelegramApiError:

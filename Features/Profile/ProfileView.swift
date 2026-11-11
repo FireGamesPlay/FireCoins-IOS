@@ -208,6 +208,7 @@ private struct ProfileSettingsView: View {
     @State private var isBusy = false
     @State private var reissuedCode: String?
     @State private var showResetSheet = false
+    @State private var showBackendRestartConfirmation = false
     @State private var errorMessage: String?
     @State private var infoMessage: String?
 
@@ -346,8 +347,35 @@ private struct ProfileSettingsView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isBusy)
+
+                            Button {
+                                showBackendRestartConfirmation = true
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "server.rack")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("ПЕРЕЗАГРУЗИТЬ BACKEND")
+                                            .font(.system(size: 12, weight: .bold))
+                                        Text("Мягкий перезапуск серверного API")
+                                            .font(.system(size: 10))
+                                            .opacity(0.8)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                }
+                                .foregroundStyle(FCTheme.negative)
+                                .padding(13)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(FCTheme.negative.opacity(0.07), in: RoundedRectangle(cornerRadius: 13))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 13)
+                                        .stroke(FCTheme.negative.opacity(0.75), lineWidth: 1.2)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isBusy)
                         } else {
-                            Text("Сброс базы доступен только администратору.")
+                            Text("Сброс базы и перезапуск Backend доступны только администратору.")
                                 .font(.system(size: 10))
                                 .foregroundStyle(FCTheme.muted)
                         }
@@ -405,6 +433,14 @@ private struct ProfileSettingsView: View {
             ResetDatabaseConfirmationView()
                 .environmentObject(store)
         }
+        .alert("Перезагрузить Backend?", isPresented: $showBackendRestartConfirmation) {
+            Button("Отмена", role: .cancel) { }
+            Button("Перезагрузить", role: .destructive) {
+                restartBackend()
+            }
+        } message: {
+            Text("Серверный API будет перезапущен через несколько секунд. Приложение может временно потерять соединение, затем подключится снова.")
+        }
     }
 
     private func settingsButton(
@@ -435,6 +471,22 @@ private struct ProfileSettingsView: View {
             do {
                 reissuedCode = try await store.reissueInvitation()
                 infoMessage = "Старый код этого аккаунта больше не действует."
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func restartBackend() {
+        guard !isBusy else { return }
+        isBusy = true
+        errorMessage = nil
+        infoMessage = nil
+        Task { @MainActor in
+            defer { isBusy = false }
+            do {
+                try await store.restartBackend()
+                infoMessage = "Запрос на перезапуск Backend принят. Соединение восстановится автоматически."
             } catch {
                 errorMessage = error.localizedDescription
             }

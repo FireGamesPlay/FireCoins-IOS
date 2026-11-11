@@ -34,4 +34,6 @@ protocol FireCoinsSessionManaging: AnyObject {
     func uploadAvatar(_ data: Data) async throws
     func loadAvatar(for role: AppRole) async throws -> Data?
     func registerPushToken(_ token: String, deviceID: String) async throws
+    func unregisterPushToken(_ token: String) async throws
+    func restartBackend() async throws
 }

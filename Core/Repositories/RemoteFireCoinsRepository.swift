@@ -334,11 +334,11 @@ private final class FireCoinsAPIClient {
     func uploadAvatar(_ imageData: Data) async throws {
         let boundary = "FireCoins-Avatar-\(UUID().uuidString)"
         var body = Data()
-        body.append("--\(boundary)\\r\\n")
-        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\\r\\n")
-        body.append("Content-Type: image/jpeg\\r\\n\\r\\n")
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\r\n")
+        body.append("Content-Type: image/jpeg\r\n\r\n")
         body.append(imageData)
-        body.append("\\r\\n--\(boundary)--\\r\\n")
+        body.append("\r\n--\(boundary)--\r\n")
         _ = try await sendData(
             path: "/api/profile/avatar",
             method: "POST",
@@ -364,6 +364,14 @@ private final class FireCoinsAPIClient {
             "/api/mobile/push/register",
             payload: ["token": token, "platform": "ios", "device_id": deviceID]
         )
+    }
+
+    func unregisterPushToken(_ token: String) async throws {
+        try await postEmpty("/api/mobile/push/unregister", payload: ["token": token])
+    }
+
+    func restartBackend() async throws {
+        try await postEmpty("/api/settings/backend/restart", payload: [:])
     }
 
     func restoreSession() async throws -> AppRole? {
@@ -686,6 +694,15 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
 
     func registerPushToken(_ token: String, deviceID: String) async throws {
         try await api.registerPushToken(token, deviceID: deviceID)
+    }
+
+    func unregisterPushToken(_ token: String) async throws {
+        try await api.unregisterPushToken(token)
+    }
+
+    func restartBackend() async throws {
+        guard currentRole == .father else { throw FireCoinsRemoteError.unauthorized }
+        try await api.restartBackend()
     }
 
     private static func normalizedAvatarJPEG(_ data: Data) throws -> Data {

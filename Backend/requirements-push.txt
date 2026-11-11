@@ -1,0 +1,2 @@
+# Required by push_service.py when Firebase credentials are configured.
+google-auth>=2.40,<3

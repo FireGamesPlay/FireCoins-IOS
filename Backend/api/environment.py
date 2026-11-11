@@ -251,8 +251,11 @@ class DatabaseMode:
                 return self._payload(self._snapshot())
             if current == "production":
                 return self._payload(self._snapshot())
-            self._write_mode("production")
+            # Remove test-only data before switching the global selector back.
+            # If cleanup fails, the mode remains sandbox and cannot silently
+            # expose production data as a partially completed transition.
             await asyncio.to_thread(shutil.rmtree, self.sandbox_root, True)
+            self._write_mode("production")
             return self._payload(self._snapshot())
 
     async def reset_current(self) -> dict[str, Any]:

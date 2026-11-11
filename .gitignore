@@ -13,3 +13,6 @@ xcuserdata/
 *.pfx
 keystore.properties
 Android/signing/
+Android/app/google-services.json
+*.mobileprovision
+GoogleService-Info.plist

@@ -101,6 +101,18 @@ struct RootView: View {
         .task {
             await store.restoreSession()
         }
+        .onChange(of: store.activeRole) { _, role in
+            guard role != nil else { return }
+            FireCoinsPushCoordinator.requestAuthorizationIfConfigured()
+            if let token = FireCoinsPushCoordinator.currentToken {
+                Task { try? await store.registerPushToken(token, deviceID: FireCoinsPushCoordinator.deviceID) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fireCoinsPushTokenUpdated)) { notification in
+            guard store.activeRole != nil,
+                  let token = notification.userInfo?["token"] as? String else { return }
+            Task { try? await store.registerPushToken(token, deviceID: FireCoinsPushCoordinator.deviceID) }
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, store.activeRole != nil else { return }
             Task { try? await store.refreshRemote() }

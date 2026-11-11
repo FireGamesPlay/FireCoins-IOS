@@ -58,6 +58,9 @@ final class AppStore: ObservableObject {
     }
 
     func signOut() async {
+        if let token = FireCoinsPushCoordinator.currentToken {
+            try? await sessionManager?.unregisterPushToken(token)
+        }
         await sessionManager?.signOut()
         activeRole = nil
         sessionError = nil
@@ -114,9 +117,21 @@ final class AppStore: ObservableObject {
         await refreshAccountSettings()
     }
 
+    func restartBackend() async throws {
+        guard activeRole == .father, let sessionManager else {
+            throw FireCoinsRemoteErrorForStore.notConfigured
+        }
+        try await sessionManager.restartBackend()
+    }
+
     func registerPushToken(_ token: String, deviceID: String) async throws {
         guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
+        let previous = FireCoinsPushCoordinator.currentToken
+        if let previous, previous != token {
+            try? await sessionManager.unregisterPushToken(previous)
+        }
         try await sessionManager.registerPushToken(token, deviceID: deviceID)
+        FireCoinsPushCoordinator.storeToken(token)
     }
 
     func refreshRemote() async throws {

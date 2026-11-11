@@ -78,11 +78,11 @@ class ApiClient(context: Context) {
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             connection.doOutput = true
             connection.outputStream.use { output ->
-                output.write("--$boundary\\r\\n".toByteArray())
-                output.write("Content-Disposition: form-data; name=\\"photo\\"; filename=\\"avatar.jpg\\"\\r\\n".toByteArray())
-                output.write("Content-Type: image/jpeg\\r\\n\\r\\n".toByteArray())
+                output.write("--$boundary\r\n".toByteArray())
+                output.write("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\r\n".toByteArray())
+                output.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
                 output.write(imageBytes)
-                output.write("\\r\\n--$boundary--\\r\\n".toByteArray())
+                output.write("\r\n--$boundary--\r\n".toByteArray())
             }
             readResponse(connection)
         }
@@ -124,6 +124,19 @@ class ApiClient(context: Context) {
                 .put("platform", "android")
                 .put("device_id", deviceId)
         )
+    }
+
+    suspend fun unregisterPushToken(token: String) {
+        if (token.isBlank()) return
+        call(
+            "/api/mobile/push/unregister",
+            method = "POST",
+            payload = JSONObject().put("token", token)
+        )
+    }
+
+    suspend fun restartBackend() {
+        call("/api/settings/backend/restart", method = "POST", payload = JSONObject())
     }
 
     suspend fun restoreSession(): JSONObject? {

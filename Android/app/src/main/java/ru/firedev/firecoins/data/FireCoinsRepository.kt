@@ -60,7 +60,18 @@ class FireCoinsRepository(private val api: ApiClient) {
     }
 
     suspend fun logout() = api.logout()
-    suspend fun reissueAdminInvitation(): String = api.reissueAdminInvitation()
+
+    suspend fun loadSettings(): JSONObject = api.loadSettings()
+    suspend fun setSandboxMode(enabled: Boolean): JSONObject = api.setSandboxMode(enabled)
+    suspend fun issueDatabaseResetChallenge(): String = api.issueDatabaseResetChallenge()
+    suspend fun resetCurrentDatabase(token: String, confirmation: String) =
+        api.resetCurrentDatabase(token, confirmation)
+    suspend fun uploadAvatar(bytes: ByteArray) = api.uploadAvatar(bytes)
+    suspend fun downloadAvatar(role: String): ByteArray? = api.downloadAvatar(role)
+    suspend fun registerPushToken(token: String, deviceId: String) = api.registerPushToken(token, deviceId)
+    suspend fun restartBackend() = api.restartBackend()
+    suspend fun unregisterPushToken(token: String) = api.unregisterPushToken(token)
+    suspend fun reissueInvitation(role: String): String = api.reissueInvitation(role)
 
 
     fun hasStoredSession(): Boolean = api.hasSession

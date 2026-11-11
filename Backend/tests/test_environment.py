@@ -130,6 +130,28 @@ class DatabaseModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(production.execute("SELECT COUNT(*) FROM transactions").fetchone()[0], 1)
         production.close()
 
+    async def test_reset_production_clears_rows_without_changing_schema(self) -> None:
+        schema_before = sqlite3.connect(self.production)
+        schema_before_hash = schema_before.execute(
+            "SELECT group_concat(type || ':' || name || ':' || coalesce(sql,''), '|') "
+            "FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+        ).fetchone()[0]
+        schema_before.close()
+
+        result = await self.manager.reset_current()
+        self.assertEqual(result["mode"], "production")
+        production = sqlite3.connect(self.production)
+        self.assertEqual(production.execute("SELECT COUNT(*) FROM transactions").fetchone()[0], 0)
+        self.assertEqual(production.execute("SELECT COUNT(*) FROM withdrawals").fetchone()[0], 0)
+        self.assertEqual(production.execute("SELECT balance FROM balance WHERE user_id=222").fetchone()[0], 0)
+        self.assertEqual(production.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        schema_after_hash = production.execute(
+            "SELECT group_concat(type || ':' || name || ':' || coalesce(sql,''), '|') "
+            "FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+        ).fetchone()[0]
+        production.close()
+        self.assertEqual(schema_after_hash, schema_before_hash)
+
     async def test_corrupt_sandbox_state_fails_closed(self) -> None:
         self.private.mkdir(parents=True, exist_ok=True)
         self.manager.state_path.write_text("{broken", encoding="utf-8")
