@@ -70,7 +70,7 @@ final class FireCoinsPushDelegate: NSObject, UIApplicationDelegate, UNUserNotifi
         let options = FirebaseOptions(googleAppID: appID, gcmSenderID: senderID)
         options.apiKey = apiKey
         options.projectID = projectID
-        options.bundleID = Bundle.main.bundleIdentifier
+        options.bundleID = Bundle.main.bundleIdentifier ?? "app.firecoins"
         FirebaseApp.configure(options: options)
     }
 
