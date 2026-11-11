@@ -75,11 +75,11 @@ final class AppStore: ObservableObject {
     }
 
     func refreshAccountSettings() async {
-        guard let sessionManager, let role = activeRole else { return }
+        guard let sessionManager, activeRole != nil else { return }
         do {
             settings = try await sessionManager.loadSettings()
         } catch {
-            // Profile content remains usable even if optional settings/avatar requests fail.
+            // Profile content remains usable if optional settings are unavailable.
         }
     }
 
