@@ -127,10 +127,6 @@ class ApiClient(context: Context) {
                 }
 
                 val contentType = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
-                if (!contentType.startsWith("image/")) {
-                    throw IOException("Сервер вернул не фотографию. Попробуйте обновить приложение.")
-                }
-
                 val declaredLength = connection.contentLengthLong
                 if (declaredLength > MAX_PROOF_BYTES) {
                     throw IOException("Фотография слишком большая для просмотра.")
@@ -153,6 +149,9 @@ class ApiClient(context: Context) {
                     }
                     val bytes = output.toByteArray()
                     if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
+                    if (!contentType.startsWith("image/") && !isSupportedImage(bytes)) {
+                        throw IOException("Сервер вернул не фотографию. Попробуйте обновить приложение.")
+                    }
                     bytes
                 }
             } finally {
@@ -256,6 +255,33 @@ class ApiClient(context: Context) {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun isSupportedImage(bytes: ByteArray): Boolean {
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xFF.toByte() &&
+            bytes[1] == 0xD8.toByte() &&
+            bytes[2] == 0xFF.toByte()
+        ) return true
+
+        if (bytes.size >= 8 &&
+            bytes.copyOfRange(0, 8).contentEquals(
+                byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+            )
+        ) return true
+
+        if (bytes.size >= 6) {
+            val header = bytes.copyOfRange(0, 6).decodeToString()
+            if (header == "GIF87a" || header == "GIF89a") return true
+        }
+
+        if (bytes.size >= 12 &&
+            bytes.copyOfRange(0, 4).decodeToString() == "RIFF" &&
+            bytes.copyOfRange(8, 12).decodeToString() == "WEBP"
+        ) return true
+
+        return bytes.size >= 12 &&
+            bytes.copyOfRange(4, 8).decodeToString() == "ftyp"
     }
 
     private fun parseError(text: String, code: Int): String {
