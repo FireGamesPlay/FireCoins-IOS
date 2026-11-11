@@ -75,6 +75,7 @@ class ProfileStore:
             os.close(fd)
 
     def save(self, user_id: int, data: bytes) -> dict[str, Any]:
+        self._prepare()
         body = bytes(data or b"")
         if not body or len(body) > MAX_AVATAR_BYTES:
             raise ProfileStoreError("Аватар должен быть изображением размером не более 4 МБ.")
