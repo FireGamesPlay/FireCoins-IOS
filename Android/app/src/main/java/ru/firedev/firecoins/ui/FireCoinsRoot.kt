@@ -46,7 +46,6 @@ import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PersonOutline
-import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
@@ -58,6 +57,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.OutlinedButton
@@ -385,6 +385,12 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
                 ) {
                     CircularProgressIndicator(color = FcAccent)
                 }
+            } else if (state.activeOperations > 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                    color = FcAccent,
+                    trackColor = FcBorder
+                )
             }
         }
     }
@@ -987,7 +993,7 @@ private fun AdminScreen(
                     proofBytes != null -> "Фотография прикреплена"
                     else -> "Добавить фотодоказательство"
                 },
-                enabled = !proofLoading && !state.isLoading
+                enabled = !proofLoading && state.activeOperations == 0 && !state.isLoading
             ) {
                 photoPicker.launch("image/*")
             }
@@ -995,11 +1001,11 @@ private fun AdminScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FcPrimaryButton(
                     "Начислить",
-                    enabled = amount.isNotBlank() && !proofLoading && !state.isLoading
+                    enabled = amount.isNotBlank() && !proofLoading && state.activeOperations == 0 && !state.isLoading
                 ) { submit("add") }
                 FcSecondaryButton(
                     "Списать",
-                    enabled = amount.isNotBlank() && !proofLoading && !state.isLoading
+                    enabled = amount.isNotBlank() && !proofLoading && state.activeOperations == 0 && !state.isLoading
                 ) { submit("remove") }
             }
             Text("Операция меняет баланс и сразу появляется в истории.", color = FcMuted, fontSize = 10.sp)
@@ -1111,7 +1117,7 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
         SurfaceCard {
             SectionTitle("Личные заметки")
             FcTextField(noteText, { noteText = it }, "Напиши сообщение…")
-            FcPrimaryButton("Отправить заметку", enabled = noteText.isNotBlank()) {
+            FcPrimaryButton("Отправить заметку", enabled = noteText.isNotBlank() && state.activeOperations == 0) {
                 viewModel.sendNote(noteText)
                 noteText = ""
             }
@@ -1126,7 +1132,7 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     }
     if (resetOpen) {
         ResetDatabaseDialog(
-            isBusy = state.isLoading,
+            isBusy = state.activeOperations > 0 || state.isLoading,
             error = state.error,
             onDismiss = { resetOpen = false },
             onConfirm = { phrase ->
@@ -1171,7 +1177,7 @@ private fun ProfileSettingsDialog(
                         "Перевыпуск создаёт новый одноразовый код для этого аккаунта. Старый код перестаёт работать, текущая сессия сохраняется.",
                         color = FcMuted, fontSize = 11.sp, lineHeight = 16.sp
                     )
-                    FcPrimaryButton("Перевыпустить мой код", enabled = !state.isLoading) {
+                    FcPrimaryButton("Перевыпустить мой код", enabled = state.activeOperations == 0 && !state.isLoading) {
                         viewModel.reissueInvitation()
                     }
                     state.reissuedInvitationCode?.let { code ->
@@ -1195,7 +1201,7 @@ private fun ProfileSettingsDialog(
                         Switch(
                             checked = state.isSandbox,
                             onCheckedChange = viewModel::toggleSandbox,
-                            enabled = !state.isLoading
+                            enabled = state.activeOperations == 0 && !state.isLoading
                         )
                     }
                     if (state.isSandbox) {
@@ -1219,7 +1225,7 @@ private fun ProfileSettingsDialog(
                         if (state.role == "father") {
                             Button(
                                 onClick = onReset,
-                                enabled = !state.isLoading,
+                                enabled = state.activeOperations == 0 && !state.isLoading,
                                 colors = ButtonDefaults.buttonColors(containerColor = FcNegative.copy(alpha = 0.12f), contentColor = FcNegative),
                                 border = BorderStroke(1.dp, FcNegative),
                                 shape = RoundedCornerShape(13.dp),
@@ -1232,7 +1238,7 @@ private fun ProfileSettingsDialog(
                             }
                             OutlinedButton(
                                 onClick = { restartConfirmationOpen = true },
-                                enabled = !state.isLoading,
+                                enabled = state.activeOperations == 0 && !state.isLoading,
                                 modifier = Modifier.fillMaxWidth(),
                                 border = BorderStroke(1.dp, FcNegative),
                                 colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = FcNegative),
@@ -1264,7 +1270,7 @@ private fun ProfileSettingsDialog(
     }
     if (restartConfirmationOpen) {
         AlertDialog(
-            onDismissRequest = { if (!state.isLoading) restartConfirmationOpen = false },
+            onDismissRequest = { if (state.activeOperations == 0 && !state.isLoading) restartConfirmationOpen = false },
             containerColor = FcSurface,
             title = { Text("Перезагрузить Backend?", color = FcText, fontWeight = FontWeight.Bold) },
             text = {
@@ -1279,13 +1285,13 @@ private fun ProfileSettingsDialog(
                         restartConfirmationOpen = false
                         viewModel.restartBackend()
                     },
-                    enabled = !state.isLoading
+                    enabled = state.activeOperations == 0 && !state.isLoading
                 ) { Text("Перезагрузить", color = FcNegative, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 TextButton(
                     onClick = { restartConfirmationOpen = false },
-                    enabled = !state.isLoading
+                    enabled = state.activeOperations == 0 && !state.isLoading
                 ) { Text("Отмена", color = FcMuted) }
             }
         )
