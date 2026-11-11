@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -85,10 +86,14 @@ def build_server_source(source: str) -> str:
 
 
 '''
-    anchor = "def create_app() -> web.Application:\n"
-    if source.count(anchor) != 1:
+    app_factory = re.compile(
+        r"(?m)^def create_app\s*\([^)]*\)\s*(?:->\s*[^:]+)?\s*:\s*$"
+    )
+    matches = list(app_factory.finditer(source))
+    if len(matches) != 1:
         raise SystemExit("Expected exactly one create_app() function.")
-    source = source.replace(anchor, handler + anchor, 1)
+    match = matches[0]
+    source = source[:match.start()] + handler + source[match.start():]
 
     route_anchor = '    app.router.add_get("/api/health", health)\n'
     route = '    app.router.add_post("/api/settings/backend/restart", authed_unscoped(backend_restart))\n'
