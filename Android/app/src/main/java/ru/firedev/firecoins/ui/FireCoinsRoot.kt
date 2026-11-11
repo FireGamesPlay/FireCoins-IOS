@@ -149,7 +149,7 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     var selectedProofBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var proofLoading by remember { mutableStateOf(false) }
     var proofError by remember { mutableStateOf<String?>(null) }
-    val proofCache = remember { mutableMapOf<Long, ImageBitmap>() }
+    val proofCache = remember(state.role) { mutableMapOf<Long, ImageBitmap>() }
 
     val openProof: (Long) -> Unit = { transactionId ->
         val cached = proofCache[transactionId]
