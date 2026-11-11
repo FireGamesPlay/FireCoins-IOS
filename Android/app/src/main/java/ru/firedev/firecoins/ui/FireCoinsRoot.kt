@@ -149,40 +149,32 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     var selectedProofBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var proofLoading by remember { mutableStateOf(false) }
     var proofError by remember { mutableStateOf<String?>(null) }
-    val proofCache = remember(state.role) { mutableMapOf<Long, ImageBitmap>() }
 
     val openProof: (Long) -> Unit = { transactionId ->
-        val cached = proofCache[transactionId]
-        if (cached != null) {
-            selectedProofBitmap = cached
-        } else if (!proofLoading) {
-            scope.launch {
-                proofLoading = true
-                proofError = null
-                try {
-                    val bytes = viewModel.downloadProof(transactionId)
-                    val bitmap = withContext(Dispatchers.Default) {
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-                            throw IllegalStateException("Файл не является корректной фотографией.")
-                        }
-                        var sampleSize = 1
-                        while (bounds.outWidth / sampleSize > 2048 || bounds.outHeight / sampleSize > 2048) {
-                            sampleSize *= 2
-                        }
-                        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-                            ?: throw IllegalStateException("Не удалось открыть фотографию.")
+        scope.launch {
+            proofLoading = true
+            proofError = null
+            try {
+                val bytes = viewModel.downloadProof(transactionId)
+                selectedProofBitmap = withContext(Dispatchers.Default) {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                        throw IllegalStateException("Файл не является корректной фотографией.")
                     }
-                    proofCache[transactionId] = bitmap
-                    selectedProofBitmap = bitmap
-                } catch (error: Exception) {
-                    proofError = error.message?.takeIf { it.isNotBlank() }
-                        ?: "Не удалось загрузить фотографию."
-                } finally {
-                    proofLoading = false
+                    var sampleSize = 1
+                    while (bounds.outWidth / sampleSize > 2048 || bounds.outHeight / sampleSize > 2048) {
+                        sampleSize *= 2
+                    }
+                    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+                        ?: throw IllegalStateException("Не удалось открыть фотографию.")
                 }
+            } catch (error: Exception) {
+                proofError = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Не удалось загрузить фотографию."
+            } finally {
+                proofLoading = false
             }
         }
     }
@@ -918,23 +910,12 @@ private fun AdminScreen(
     var amount by remember { mutableStateOf("") }
     var reason by remember { mutableStateOf("Хорошая оценка") }
     var proofBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var proofProcessing by remember { mutableStateOf(false) }
-    var proofError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                proofProcessing = true
-                proofError = null
-                try {
-                    proofBytes = readBytes(context, uri)
-                } catch (error: Exception) {
-                    proofBytes = null
-                    proofError = error.message ?: "Не удалось обработать фотодоказательство."
-                } finally {
-                    proofProcessing = false
-                }
+                proofBytes = readBytes(context, uri)
             }
         }
     }
@@ -945,37 +926,18 @@ private fun AdminScreen(
             SectionTitle("Операция")
             FcTextField(amount, { amount = it }, "Количество баллов", isNumber = true)
             FcTextField(reason, { reason = it }, "Причина")
-            FcSecondaryButton(
-                when {
-                    proofProcessing -> "Обрабатываем фотографию…"
-                    proofBytes != null -> "Фотодоказательство прикреплено"
-                    else -> "Добавить фотодоказательство"
-                },
-                enabled = !proofProcessing && !state.isLoading
-            ) {
+            FcSecondaryButton(if (proofBytes == null) "Добавить фотодоказательство" else "Фотография прикреплена") {
                 photoPicker.launch("image/*")
             }
-            proofError?.let { Text(it, color = FcNegative, fontSize = 10.sp) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FcPrimaryButton(
-                    "Начислить",
-                    enabled = amount.isNotBlank() && !proofProcessing && !state.isLoading
-                ) {
-                    viewModel.addTransaction(amount, "add", reason, proofBytes) {
-                        amount = ""
-                        proofBytes = null
-                        proofError = null
-                    }
+                FcPrimaryButton("Начислить", enabled = amount.isNotBlank()) {
+                    viewModel.addTransaction(amount, "add", reason, null)
+                    amount = ""
                 }
-                FcSecondaryButton(
-                    "Списать",
-                    enabled = amount.isNotBlank() && !proofProcessing && !state.isLoading
-                ) {
-                    viewModel.addTransaction(amount, "remove", reason, proofBytes) {
-                        amount = ""
-                        proofBytes = null
-                        proofError = null
-                    }
+                FcSecondaryButton("Списать", enabled = amount.isNotBlank()) {
+                    viewModel.addTransaction(amount, "remove", reason, proofBytes)
+                    amount = ""
+                    proofBytes = null
                 }
             }
             Text("Операция меняет баланс и сразу появляется в истории.", color = FcMuted, fontSize = 10.sp)
@@ -1051,8 +1013,6 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     var resetOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var avatarProcessing by remember { mutableStateOf(false) }
-    var avatarError by remember { mutableStateOf<String?>(null) }
     val title = if (state.role == "father") "Макс" else "Артемий"
     val avatar = remember(state.avatarBytes) {
         state.avatarBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
@@ -1060,15 +1020,8 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             scope.launch {
-                avatarProcessing = true
-                avatarError = null
-                try {
-                    viewModel.uploadAvatar(readAvatarBytes(context, uri))
-                } catch (error: Exception) {
-                    avatarError = error.message ?: "Не удалось обработать аватар."
-                } finally {
-                    avatarProcessing = false
-                }
+                runCatching { readAvatarBytes(context, uri) }
+                    .onSuccess(viewModel::uploadAvatar)
             }
         }
     }
@@ -1100,18 +1053,9 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
                     }
                     IconButton(
                         onClick = { photoPicker.launch("image/*") },
-                        enabled = !avatarProcessing && !state.isLoading,
                         modifier = Modifier.size(29.dp).background(FcAccent, CircleShape)
                     ) {
-                        if (avatarProcessing || state.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(15.dp),
-                                color = Color.Black,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Outlined.PhotoCamera, contentDescription = "Изменить аватар", tint = Color.Black, modifier = Modifier.size(16.dp))
-                        }
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Изменить аватар", tint = Color.Black, modifier = Modifier.size(16.dp))
                     }
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1127,8 +1071,6 @@ private fun ProfileScreen(state: AppUiState, viewModel: MainViewModel) {
                 }
             }
         }
-        avatarError?.let { Text(it, color = FcNegative, fontSize = 11.sp) }
-        state.error?.takeIf { it.isNotBlank() }?.let { Text(it, color = FcNegative, fontSize = 11.sp) }
         SurfaceCard {
             SectionTitle("Личные заметки")
             FcTextField(noteText, { noteText = it }, "Напиши сообщение…")
@@ -1360,56 +1302,26 @@ private fun ResetDatabaseDialog(
 
 private suspend fun readAvatarBytes(context: Context, uri: Uri): ByteArray =
     withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        val boundsStream = resolver.openInputStream(uri)
+        val source = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalStateException("Не удалось прочитать выбранное изображение.")
-        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-            throw IllegalArgumentException("Выбранный файл не является изображением.")
-        }
-
-        var sample = 1
-        val sourceLargest = maxOf(bounds.outWidth, bounds.outHeight)
-        while (sourceLargest / sample > 1600) sample *= 2
-        val decoded = resolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
-        } ?: throw IllegalArgumentException("Не удалось открыть изображение.")
-
-        try {
-            val largest = maxOf(decoded.width, decoded.height)
-            val scale = minOf(1f, 1024f / largest.toFloat())
-            val resized = if (scale < 1f) {
-                Bitmap.createScaledBitmap(
-                    decoded,
-                    (decoded.width * scale).toInt().coerceAtLeast(1),
-                    (decoded.height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else decoded
-
-            try {
-                var quality = 86
-                val output = ByteArrayOutputStream()
-                while (true) {
-                    output.reset()
-                    if (!resized.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
-                        throw IllegalStateException("Не удалось обработать изображение.")
-                    }
-                    if (output.size() <= 4 * 1024 * 1024) break
-                    if (quality <= 50) {
-                        throw IllegalArgumentException("Аватар слишком большой. Выберите другое изображение.")
-                    }
-                    quality -= 8
-                }
-                output.toByteArray().also {
-                    if (it.isEmpty()) throw IllegalArgumentException("Не удалось обработать изображение.")
-                }
-            } finally {
-                if (resized !== decoded) resized.recycle()
-            }
-        } finally {
-            decoded.recycle()
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(source, 0, source.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("Выбранный файл не является изображением.")
+        val sample = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 1600)
+        val decoded = BitmapFactory.decodeByteArray(source, 0, source.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IllegalArgumentException("Не удалось открыть изображение.")
+        val largest = maxOf(decoded.width, decoded.height)
+        val scale = minOf(1f, 1024f / largest.toFloat())
+        val resized = if (scale < 1f) {
+            Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+                (decoded.height * scale).toInt().coerceAtLeast(1), true)
+        } else decoded
+        val output = java.io.ByteArrayOutputStream()
+        if (!resized.compress(Bitmap.CompressFormat.JPEG, 86, output)) throw IllegalStateException("Не удалось обработать изображение.")
+        if (resized !== decoded) decoded.recycle()
+        resized.recycle()
+        output.toByteArray().also {
+            if (it.isEmpty() || it.size > 4 * 1024 * 1024) throw IllegalArgumentException("Аватар должен быть не больше 4 МБ.")
         }
     }
 
@@ -1620,46 +1532,41 @@ private fun FcSecondaryButton(
     }
 }
 
-private suspend fun readBytes(context: Context, uri: Uri): ByteArray =
-    withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        val boundsStream = resolver.openInputStream(uri)
-            ?: throw IllegalArgumentException("Не удалось прочитать изображение.")
-        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-            throw IllegalArgumentException("Выбранный файл не является изображением.")
-        }
+private suspend fun readBytes(context: Context, uri: Uri): ByteArray? {
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val resolver = context.contentResolver
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                throw IllegalArgumentException("Не удалось прочитать изображение.")
+            }
 
-        var sampleSize = 1
-        val largestSide = maxOf(bounds.outWidth, bounds.outHeight)
-        while (largestSide / sampleSize > 2048) sampleSize *= 2
+            var sampleSize = 1
+            val largestSide = maxOf(bounds.outWidth, bounds.outHeight)
+            while (largestSide / sampleSize > 2048) sampleSize *= 2
 
-        val bitmap = resolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
-        } ?: throw IllegalArgumentException("Не удалось открыть изображение.")
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: throw IllegalArgumentException("Не удалось открыть изображение.")
 
-        try {
-            var quality = 86
-            val output = ByteArrayOutputStream()
-            while (true) {
-                output.reset()
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
-                    throw IllegalStateException("Не удалось обработать фотографию.")
+            try {
+                var quality = 86
+                var bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+                while (bytes.size > 7 * 1024 * 1024 && quality > 45) {
+                    quality -= 8
+                    bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
                 }
-                if (output.size() <= 8 * 1024 * 1024) break
-                if (quality <= 45) {
+                if (bytes.size > 8 * 1024 * 1024) {
                     throw IllegalArgumentException("Фотография слишком большая. Выберите другое изображение.")
                 }
-                quality -= 8
+                bytes
+            } finally {
+                bitmap.recycle()
             }
-            output.toByteArray().also {
-                if (it.isEmpty()) throw IllegalArgumentException("Не удалось обработать фотографию.")
-            }
-        } finally {
-            bitmap.recycle()
-        }
+        }.getOrNull()
     }
+}
 
 
 private fun String.isTechnicalTimeout(): Boolean {
