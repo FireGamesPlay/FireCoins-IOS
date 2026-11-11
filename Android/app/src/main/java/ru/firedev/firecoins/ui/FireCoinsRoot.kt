@@ -212,6 +212,13 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
         }
     }
 
+    LaunchedEffect(state.role, state.isSandbox) {
+        // A transaction ID can exist in both environments; do not reuse images across modes.
+        proofBitmapCache.clear()
+        selectedProofBitmap = null
+        proofError = null
+    }
+
     LaunchedEffect(state.role, state.isLoading) {
         val currentRole = state.role
         if (currentRole == null) {
