@@ -763,7 +763,10 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         if let proofFileID { payload["proof_file_id"] = proofFileID }
         let path = kind == .credit ? "/api/add" : "/api/remove"
         try await api.postEmpty(path, payload: payload)
-        try await refreshSnapshot()
+        // The transaction is committed at this point. A later snapshot refresh
+        // failure must not make the UI treat the operation as failed and invite
+        // the user to submit the same transaction a second time.
+        try? await refreshSnapshot()
     }
 
     func submitDispute(transactionID: UUID) async throws {
