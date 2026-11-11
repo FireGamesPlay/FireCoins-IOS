@@ -19,11 +19,11 @@ if "/api/mobile/invitations/reissue" in source:
 handler_anchor = """async def mobile_auth_refresh(request: web.Request) -> web.Response:
 """
 handler = '''async def mobile_invitation_reissue(request: web.Request, user: MiniAppUser) -> web.Response:
-    if user.role != "father":
-        raise ApiError("Only Father can reissue an invitation.", status=403, code="forbidden")
+    if user.role not in {"father", "artemiy"}:
+        raise ApiError("Access denied.", status=403, code="forbidden")
 
     try:
-        code = await asyncio.to_thread(mobile_auth_store.reissue_invitation, "father")
+        code = await asyncio.to_thread(mobile_auth_store.reissue_invitation, user.role)
     except MobileAuthError as exc:
         raise ApiError(str(exc), status=exc.status, code=exc.code) from exc
     except (OSError, RuntimeError) as exc:
@@ -33,7 +33,7 @@ handler = '''async def mobile_invitation_reissue(request: web.Request, user: Min
     # The plaintext code is returned exactly once; only its salted hash is stored.
     return json_response({
         "ok": True,
-        "invitation": {"role": "father", "code": code},
+        "invitation": {"role": user.role, "code": code},
     })
 
 
