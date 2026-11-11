@@ -75,6 +75,8 @@ class ApiClient(context: Context) {
         val boundary = "FireCoins-Avatar-${UUID.randomUUID()}"
         val result = withContext(Dispatchers.IO) {
             val connection = openConnection("/api/profile/avatar", "POST", authenticated = true)
+            connection.connectTimeout = 20_000
+            connection.readTimeout = 60_000
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             connection.doOutput = true
             connection.outputStream.use { output ->
@@ -94,6 +96,8 @@ class ApiClient(context: Context) {
     suspend fun downloadAvatar(role: String): ByteArray? = withContext(Dispatchers.IO) {
         val connection = openConnection("/api/profile/avatar/$role", "GET", authenticated = true)
         try {
+            connection.connectTimeout = 20_000
+            connection.readTimeout = 60_000
             val code = connection.responseCode
             if (code == HttpURLConnection.HTTP_NOT_FOUND) return@withContext null
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
@@ -171,6 +175,8 @@ class ApiClient(context: Context) {
         val boundary = "FireCoins-${UUID.randomUUID()}"
         val response = withContext(Dispatchers.IO) {
             val connection = openConnection("/api/upload-proof", "POST", authenticated = true)
+            connection.connectTimeout = 20_000
+            connection.readTimeout = 60_000
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             connection.doOutput = true
 
@@ -205,8 +211,8 @@ class ApiClient(context: Context) {
         return withContext(Dispatchers.IO) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
             try {
-                connection.connectTimeout = 12_000
-                connection.readTimeout = 20_000
+                connection.connectTimeout = 20_000
+                connection.readTimeout = 60_000
                 val code = connection.responseCode
                 if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
                     connection.disconnect()
