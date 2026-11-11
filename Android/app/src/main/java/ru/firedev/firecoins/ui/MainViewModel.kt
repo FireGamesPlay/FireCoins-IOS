@@ -95,8 +95,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addTransaction(amount: String, action: String, reason: String, proofBytes: ByteArray?) {
-        execute("Операция сохранена.") {
+    fun addTransaction(
+        amount: String,
+        action: String,
+        reason: String,
+        proofBytes: ByteArray?,
+        onSuccess: () -> Unit = {}
+    ) {
+        execute("Операция сохранена.", onSuccess) {
             repository.applyTransaction(amount.toIntOrNull() ?: 0, action, reason, proofBytes)
         }
     }
@@ -222,7 +228,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.uploadAvatar(bytes)
                 state.value = state.value.copy(
                     isLoading = false,
-                    avatarBytes = repository.downloadAvatar(role),
+                    avatarBytes = bytes.copyOf(),
                     message = "Аватар обновлён."
                 )
             } catch (error: Exception) {
@@ -295,6 +301,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun reportError(message: String) {
+        state.value = state.value.copy(isLoading = false, error = message)
+    }
+
     fun clearMessage() {
         state.value = state.value.copy(message = null, error = null)
     }
@@ -333,7 +343,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun execute(successMessage: String, action: suspend () -> Unit) {
+    private fun execute(
+        successMessage: String,
+        onSuccess: (() -> Unit)? = null,
+        action: suspend () -> Unit
+    ) {
         viewModelScope.launch {
             state.value = state.value.copy(isLoading = true, error = null, message = null)
             try {
@@ -342,6 +356,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val snapshot = repository.loadSnapshot(role)
                 applySnapshot(snapshot)
                 state.value = state.value.copy(message = successMessage)
+                onSuccess?.invoke()
             } catch (error: Exception) {
                 state.value = state.value.copy(isLoading = false, error = error.message ?: "Операция не выполнена.")
             }
