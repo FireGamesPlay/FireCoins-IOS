@@ -137,3 +137,19 @@ class ProfileStore:
         except ProfileStoreError:
             return False
 
+
+from .config import MOBILE_AUTH_STORE_PATH
+from .environment import current_sidecar_root
+
+_PROFILE_ROOT = MOBILE_AUTH_STORE_PATH.parent / "profiles"
+_PROFILE_STORES: dict[Path, ProfileStore] = {}
+
+
+def get_profile_store() -> ProfileStore:
+    active_root = current_sidecar_root(MOBILE_AUTH_STORE_PATH.parent)
+    root = _PROFILE_ROOT if active_root == MOBILE_AUTH_STORE_PATH.parent else active_root / "profiles"
+    store = _PROFILE_STORES.get(root)
+    if store is None:
+        store = ProfileStore(root)
+        _PROFILE_STORES[root] = store
+    return store
