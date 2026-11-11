@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from api.proof_store import ProofStore, ProofStoreError, detect_image_content_type
 
-JPEG = bytes.fromhex("ffd8ffe000104a46494600010100000100010000") + b"firecoins-test" + bytes.fromhex("ffd9")
+
+def make_jpeg(*, progressive: bool = False) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (24, 32), (30, 90, 150)).save(
+        output,
+        format="JPEG",
+        quality=88,
+        progressive=progressive,
+    )
+    return output.getvalue()
+
+
+JPEG = make_jpeg()
+PROGRESSIVE_JPEG = make_jpeg(progressive=True)
 PNG = bytes.fromhex("89504e470d0a1a0a") + b"firecoins-test"
 
 
@@ -27,12 +43,29 @@ class ProofStoreTests(unittest.TestCase):
             self.assertEqual(content_type, "image/jpeg")
             self.assertEqual(root.stat().st_mode & 0o777, 0o700)
 
-    def test_legacy_references_are_mapped_without_changing_reference(self) -> None:
+    def test_progressive_jpegs_are_normalized_to_baseline_for_mobile_clients(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "proofs"
+            store = ProofStore(root)
+            reference = store.save(PROGRESSIVE_JPEG)
+            body, content_type = store.load(reference)
+            self.assertEqual(content_type, "image/jpeg")
+            self.assertNotEqual(body, PROGRESSIVE_JPEG)
+            with Image.open(BytesIO(body)) as decoded:
+                self.assertEqual(decoded.format, "JPEG")
+                self.assertFalse(bool(decoded.info.get("progressive") or decoded.info.get("progression")))
+                decoded.load()
+
+    def test_progressive_legacy_import_is_normalized_without_changing_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             store = ProofStore(Path(temp) / "proofs")
             legacy = "legacy-telegram-file-id"
-            store.import_legacy(legacy, JPEG)
-            self.assertEqual(store.load(legacy), (JPEG, "image/jpeg"))
+            store.import_legacy(legacy, PROGRESSIVE_JPEG)
+            body, content_type = store.load(legacy)
+            self.assertEqual(content_type, "image/jpeg")
+            with Image.open(BytesIO(body)) as decoded:
+                self.assertFalse(bool(decoded.info.get("progressive") or decoded.info.get("progression")))
+                decoded.load()
             self.assertTrue(store.has_legacy(legacy))
 
     def test_rejects_non_images_and_oversized_images(self) -> None:
@@ -41,7 +74,7 @@ class ProofStoreTests(unittest.TestCase):
             with self.assertRaises(ProofStoreError):
                 store.save(b"not an image")
             with self.assertRaises(ProofStoreError):
-                store.save(JPEG * 4, max_bytes=10)
+                store.save(JPEG, max_bytes=10)
 
     def test_corrupt_index_is_not_silently_reset(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
