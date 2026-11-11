@@ -29,16 +29,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" != "refs/heads/v2-development" ]]; then
-            echo "::error::Release IPA builds must run from v2-development. Selected ref: $GITHUB_REF"
+          # Push-triggered production releases remain restricted to v2-development.
+          # Manual workflow_dispatch builds may validate a feature branch before merge.
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" != "refs/heads/v2-development" ]]; then
+            echo "::error::Push-triggered IPA releases must run from v2-development. Selected ref: $GITHUB_REF"
             exit 1
           fi
-          echo "Building source from v2-development at $GITHUB_SHA"
+          echo "Building source from $GITHUB_REF at $GITHUB_SHA"
 
       - name: Checkout source
         uses: actions/checkout@v4
-        with:
-          ref: v2-development
 
       - name: Select Xcode
         run: |
