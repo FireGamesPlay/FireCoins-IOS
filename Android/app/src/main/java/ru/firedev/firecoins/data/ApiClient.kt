@@ -206,7 +206,7 @@ class ApiClient(context: Context) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
             try {
                 connection.connectTimeout = 12_000
-                connection.readTimeout = 20_000
+                connection.readTimeout = 60_000
                 val code = connection.responseCode
                 if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
                     connection.disconnect()
