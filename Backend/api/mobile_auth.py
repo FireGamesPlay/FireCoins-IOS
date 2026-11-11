@@ -185,7 +185,7 @@ class MobileAuthStore:
     def reissue_invitation(self, role: str) -> str:
         """Replace one role-bound invitation without revoking existing sessions."""
         role = str(role or "").strip().lower()
-        role_users = {"father": int(FATHER_ID)}
+        role_users = {"father": int(FATHER_ID), "artemiy": int(ARTEMIY_ID)}
         user_id = role_users.get(role)
         if user_id is None or get_role(user_id) != role:
             raise MobileAuthError("Invitation role is not eligible for reissue.", status=400, code="invalid_invitation_role")
