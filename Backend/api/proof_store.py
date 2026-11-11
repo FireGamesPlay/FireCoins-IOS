@@ -12,6 +12,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from .environment import current_sidecar_root
+
 MAX_PROOF_BYTES = 12 * 1024 * 1024
 LOCAL_PROOF_PREFIX = "fcproof:"
 _LOCAL_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -204,3 +206,15 @@ class ProofStore:
 
 
 proof_store = ProofStore()
+_PROOF_STORES: dict[Path, ProofStore] = {proof_store.root: proof_store}
+
+
+def get_proof_store() -> ProofStore:
+    production_root = proof_store.root
+    active_root = current_sidecar_root(production_root.parent)
+    root = production_root if active_root == production_root.parent else active_root / production_root.name
+    store = _PROOF_STORES.get(root)
+    if store is None:
+        store = ProofStore(root)
+        _PROOF_STORES[root] = store
+    return store
