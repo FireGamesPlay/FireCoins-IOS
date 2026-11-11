@@ -25,7 +25,8 @@ class ApiClient(context: Context) {
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
+        // Never automatically replay financial mutations after an ambiguous network failure.
+        .retryOnConnectionFailure(false)
         .build()
 
     private data class HttpResult(
