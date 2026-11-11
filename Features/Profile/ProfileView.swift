@@ -10,6 +10,7 @@ struct ProfileView: View {
     @State private var alertMessage: String?
     @State private var showSettings = false
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isUploadingAvatar = false
 
     private var ownNotes: [PrivateNote] {
         store.snapshot.notes.sorted { $0.date > $1.date }
@@ -38,14 +39,22 @@ struct ProfileView: View {
                                 .overlay { Circle().stroke(FCTheme.border, lineWidth: 1) }
 
                             PhotosPicker(selection: $selectedPhoto, matching: .images, photoLibrary: .shared()) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(Color(hex: 0x211A14))
-                                    .frame(width: 25, height: 25)
-                                    .background(FCTheme.accentLight, in: Circle())
-                                    .overlay { Circle().stroke(FCTheme.background, lineWidth: 2) }
+                                Group {
+                                    if isUploadingAvatar {
+                                        ProgressView()
+                                            .tint(Color(hex: 0x211A14))
+                                    } else {
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(Color(hex: 0x211A14))
+                                    }
+                                }
+                                .frame(width: 25, height: 25)
+                                .background(FCTheme.accentLight, in: Circle())
+                                .overlay { Circle().stroke(FCTheme.background, lineWidth: 2) }
                             }
-                            .accessibilityLabel("Изменить аватар")
+                            .disabled(isUploadingAvatar)
+                            .accessibilityLabel(isUploadingAvatar ? "Загрузка аватара" : "Изменить аватар")
                             .offset(x: 3, y: 3)
                         }
 
@@ -147,7 +156,12 @@ struct ProfileView: View {
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
+            isUploadingAvatar = true
             Task { @MainActor in
+                defer {
+                    isUploadingAvatar = false
+                    selectedPhoto = nil
+                }
                 do {
                     guard let data = try await item.loadTransferable(type: Data.self) else {
                         throw ProfilePhotoError.invalid
@@ -155,9 +169,8 @@ struct ProfileView: View {
                     try await store.uploadAvatar(data)
                     alertMessage = "Аватар обновлён."
                 } catch {
-                    alertMessage = error.localizedDescription
+                    alertMessage = "Не удалось загрузить аватар: \(error.localizedDescription)"
                 }
-                selectedPhoto = nil
             }
         }
         .alert("Fire Coins", isPresented: Binding(get: { alertMessage != nil }, set: { if !$0 { alertMessage = nil } })) {
