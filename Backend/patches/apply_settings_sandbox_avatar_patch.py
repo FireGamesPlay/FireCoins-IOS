@@ -154,7 +154,7 @@ def build_services_source(source: str) -> str:
 
 def build_server_source(source: str) -> str:
     if "from .environment import DatabaseModeError, database_mode" in source:
-        raise SystemExit("Settings/avatar/sandbox API patch already appears to be installed.")
+        raise SystemExit("Settings/sandbox API patch already appears to be installed.")
 
     source = replace_once(
         source,
@@ -167,7 +167,6 @@ def build_server_source(source: str) -> str:
         "from .proof_store import ProofStoreError, proof_store\n",
         "from .proof_store import ProofStoreError, get_proof_store\n"
         "from .environment import DatabaseModeError, database_mode, active_environment_status, set_sandbox_mode\n"
-        "from .profile_store import ProfileStoreError, get_profile_store, MAX_AVATAR_BYTES\n"
         "from .push_store import PushStoreError, push_store\n"
         "from .push_service import push_delivery\n"
         "from .reset_challenges import ResetChallengeError, ResetChallengeStore\n",
@@ -269,51 +268,6 @@ async def database_reset_execute(request: web.Request, user: MiniAppUser) -> web
     return json_response({"ok": True, "reset": result})
 
 
-async def upload_avatar(request: web.Request, user: MiniAppUser) -> web.Response:
-    reader = await request.multipart()
-    image_bytes = b""
-    async for field in reader:
-        if field.name != "photo":
-            continue
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = await field.read_chunk()
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_AVATAR_BYTES:
-                raise ApiError("Аватар должен быть не больше 4 МБ.", status=413, code="avatar_too_large")
-            chunks.append(chunk)
-        image_bytes = b"".join(chunks)
-
-    try:
-        result = get_profile_store().save(user.id, image_bytes)
-    except ProfileStoreError as exc:
-        raise ApiError(str(exc), status=400, code="invalid_avatar") from exc
-    return json_response({"ok": True, "avatar": result})
-
-
-async def avatar_file(request: web.Request, user: MiniAppUser) -> web.StreamResponse:
-    role = str(request.match_info.get("role") or "")
-    account_id = {"father": FATHER_ID, "artemiy": ARTEMIY_ID}.get(role)
-    if account_id is None:
-        raise ApiError("Неизвестный профиль.", status=404, code="profile_not_found")
-    try:
-        body, content_type = get_profile_store().load(account_id)
-    except ProfileStoreError as exc:
-        raise ApiError(str(exc), status=404, code="avatar_not_found") from exc
-    return web.Response(
-        body=body,
-        content_type=content_type,
-        headers={
-            "Cache-Control": "private, max-age=300",
-            "Content-Disposition": 'inline; filename="avatar"',
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
-
-
 async def mobile_push_register(request: web.Request, user: MiniAppUser) -> web.Response:
     body = await read_json(request)
     try:
@@ -347,8 +301,7 @@ async def mobile_push_unregister(request: web.Request, user: MiniAppUser) -> web
         '    app.router.add_post("/api/settings/sandbox", authed_unscoped(sandbox_switch))\n'
         '    app.router.add_post("/api/settings/database/reset/challenge", authed_unscoped(database_reset_challenge))\n'
         '    app.router.add_post("/api/settings/database/reset", authed_unscoped(database_reset_execute))\n'
-        '    app.router.add_post("/api/profile/avatar", authed(upload_avatar))\n'
-        '    app.router.add_get("/api/profile/avatar/{role}", authed(avatar_file))\n',
+        '',
         "new API routes",
     )
     source = source.replace("proof_store.save(file_bytes", "get_proof_store().save(file_bytes")
@@ -363,6 +316,8 @@ async def mobile_push_unregister(request: web.Request, user: MiniAppUser) -> web
     ast.parse(source)
     if "proof_store.save" in source or "proof_store.load" in source:
         raise SystemExit("Static production proof store reference remains.")
+    if "/api/profile/avatar" in source or "profile_store" in source or "upload_avatar" in source:
+        raise SystemExit("Avatar API routes must not be installed.")
     return source
 
 
@@ -403,7 +358,7 @@ def apply() -> Path:
 
     for path, value in changes.items():
         _atomic_write(path, value)
-    print("Installed sandbox/settings/avatar/push-token API routes.")
+    print("Installed sandbox/settings/push-token API routes (avatar support is intentionally omitted).")
     print(f"Backup: {backup_dir}")
     print("No production database schema or rows were modified.")
     print("Restart the API only after compile and staging verification.")
