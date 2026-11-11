@@ -1,5 +1,12 @@
 import Foundation
 
+struct FireCoinsAppSettings: Equatable {
+    var isSandbox: Bool = false
+    var environmentLabel: String = "Рабочая среда"
+    var canResetDatabase: Bool = false
+    var pushConfigured: Bool = false
+}
+
 @MainActor
 protocol FireCoinsRepository: AnyObject {
     func snapshot() -> FireCoinsSnapshot
@@ -19,5 +26,12 @@ protocol FireCoinsSessionManaging: AnyObject {
     func signOut() async
     func refreshSnapshot() async throws
     func loadProof(transactionID: UUID) async throws -> Data
-    func reissueAdminInvitation() async throws -> String
+    func reissueInvitation() async throws -> String
+    func loadSettings() async throws -> FireCoinsAppSettings
+    func setSandboxMode(_ enabled: Bool) async throws -> FireCoinsAppSettings
+    func issueDatabaseResetChallenge() async throws -> String
+    func resetCurrentDatabase(resetToken: String, confirmation: String) async throws
+    func uploadAvatar(_ data: Data) async throws
+    func loadAvatar(for role: AppRole) async throws -> Data?
+    func registerPushToken(_ token: String, deviceID: String) async throws
 }
