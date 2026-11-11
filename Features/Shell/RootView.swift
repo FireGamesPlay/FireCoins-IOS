@@ -18,6 +18,20 @@ struct RootView: View {
                     }
                 } else if let activeRole = store.activeRole {
                     VStack(spacing: 0) {
+                        if store.settings.isSandbox {
+                            HStack(spacing: 8) {
+                                Image(systemName: "testtube.2")
+                                Text("ТЕСТ РЕЖИМ")
+                                    .font(.system(size: 11, weight: .black))
+                                    .tracking(1.6)
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Color.red)
+                            .accessibilityLabel("Тестовый режим включён")
+                        }
+
                         if let sessionError = store.sessionError {
                             HStack(spacing: 10) {
                                 Image(systemName: "wifi.exclamationmark")
