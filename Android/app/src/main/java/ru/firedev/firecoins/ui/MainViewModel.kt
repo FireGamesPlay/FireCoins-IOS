@@ -1,7 +1,6 @@
 package ru.firedev.firecoins.ui
 
 import android.app.Application
-import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import androidx.lifecycle.AndroidViewModel
@@ -96,14 +95,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addTransaction(
-        amount: String,
-        action: String,
-        reason: String,
-        proofBytes: ByteArray?,
-        onSuccess: () -> Unit = {}
-    ) {
-        execute("Операция сохранена.", onSuccess) {
+    fun addTransaction(amount: String, action: String, reason: String, proofBytes: ByteArray?) {
+        execute("Операция сохранена.") {
             repository.applyTransaction(amount.toIntOrNull() ?: 0, action, reason, proofBytes)
         }
     }
@@ -229,7 +222,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.uploadAvatar(bytes)
                 state.value = state.value.copy(
                     isLoading = false,
-                    avatarBytes = bytes.copyOf(),
+                    avatarBytes = repository.downloadAvatar(role),
                     message = "Аватар обновлён."
                 )
             } catch (error: Exception) {
@@ -258,29 +251,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun registerPushDevice() {
-        val role = state.value.role ?: return
+        if (state.value.role == null) return
         viewModelScope.launch {
             try {
-                if (FirebaseApp.getApps(getApplication()).isEmpty()) {
-                    Log.w(TAG, "FirebaseApp is not initialized; push registration skipped.")
-                    return@launch
-                }
+                if (FirebaseApp.getApps(getApplication()).isEmpty()) return@launch
                 val token = FirebaseMessaging.getInstance().token.await()
-                if (token.isNullOrBlank()) {
-                    throw IllegalStateException("Firebase returned an empty registration token.")
-                }
+                if (token.isNullOrBlank()) return@launch
                 val previous = PushDeviceIdentity.token(getApplication())
                 if (!previous.isNullOrBlank() && previous != token) {
                     runCatching { repository.unregisterPushToken(previous) }
                 }
                 repository.registerPushToken(token, PushDeviceIdentity.deviceId(getApplication()))
                 PushDeviceIdentity.saveToken(getApplication(), token)
-                Log.i(TAG, "FCM device registered for role=$role.")
-            } catch (error: Exception) {
-                Log.e(
-                    TAG,
-                    "FCM device registration failed: ${error.javaClass.simpleName}: ${error.message}"
-                )
+            } catch (_: Exception) {
+                // Firebase is optional until the project configuration is installed.
             }
         }
     }
@@ -309,10 +293,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             avatarBytes = previous.avatarBytes,
             reissuedInvitationCode = previous.reissuedInvitationCode
         )
-    }
-
-    fun reportError(message: String) {
-        state.value = state.value.copy(isLoading = false, error = message)
     }
 
     fun clearMessage() {
@@ -353,11 +333,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun execute(
-        successMessage: String,
-        onSuccess: (() -> Unit)? = null,
-        action: suspend () -> Unit
-    ) {
+    private fun execute(successMessage: String, action: suspend () -> Unit) {
         viewModelScope.launch {
             state.value = state.value.copy(isLoading = true, error = null, message = null)
             try {
@@ -366,7 +342,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val snapshot = repository.loadSnapshot(role)
                 applySnapshot(snapshot)
                 state.value = state.value.copy(message = successMessage)
-                onSuccess?.invoke()
             } catch (error: Exception) {
                 state.value = state.value.copy(isLoading = false, error = error.message ?: "Операция не выполнена.")
             }
@@ -384,8 +359,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         spinsLeft = spinsLeft,
         pendingDisputes = pendingDisputes
     )
-
-    private companion object {
-        const val TAG = "FireCoinsPush"
-    }
 }
