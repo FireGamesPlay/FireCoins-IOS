@@ -110,7 +110,7 @@ def build_services_source(source: str) -> str:
         logger.exception("Could not persist Fire Coins note")
         raise ApiError("Note could not be saved to shared history.", status=503, code="note_persistence_failed") from exc
 
-    push_delivered = await _notify(target_id, f"Новая заметка от {user.display_name}:\\\\n{note_text}")
+    push_delivered = await _notify(target_id, f"Новая заметка от {user.display_name}:\\n{note_text}")
     return {
         "id": note["id"],
         "sender_id": note["sender_id"],
