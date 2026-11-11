@@ -371,7 +371,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-        private fun FireCoinsSnapshot.toUiState(isLoading: Boolean): AppUiState = AppUiState(
+        private fun execute(
+        successMessage: String,
+        onSuccess: () -> Unit = {},
+        action: suspend () -> Unit
+    ) {
+        viewModelScope.launch {
+            beginLoading()
+            state.value = state.value.copy(error = null, message = null)
+            try {
+                withTimeout(25_000) { action() }
+
+                // The mutation is already committed. Clear the form before the
+                // optional follow-up snapshot request.
+                onSuccess()
+                state.value = state.value.copy(message = successMessage)
+
+                val role = state.value.role
+                if (role != null) {
+                    try {
+                        val snapshot = withTimeout(25_000) {
+                            repository.loadSnapshot(role)
+                        }
+                        applySnapshot(snapshot)
+                        state.value = state.value.copy(message = successMessage, error = null)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        state.value = state.value.copy(
+                            message = successMessage,
+                            error = "Операция выполнена, но данные не обновились: ${error.message ?: "ошибка сети"}"
+                        )
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                state.value = state.value.copy(
+                    error = error.message ?: "Операция не выполнена."
+                )
+            } finally {
+                endLoading()
+            }
+        }
+    }
+
+    private fun FireCoinsSnapshot.toUiState(isLoading: Boolean): AppUiState = AppUiState(
         isLoading = isLoading,
         role = role,
         balance = balance,
