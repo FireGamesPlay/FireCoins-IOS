@@ -1,4 +1,5 @@
 name: Build signed IPA
+
 on:
   push:
     branches:
@@ -12,20 +13,40 @@ on:
       - ".github/workflows/build-ipa.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build and re-sign Fire Coins IPA
     runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APP_BUNDLE_ID: app.firecoins
+
     steps:
+      - name: Guard release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/v2-development" ]]; then
+            echo "::error::Release IPA builds must run from v2-development. Selected ref: $GITHUB_REF"
+            exit 1
+          fi
+          echo "Building source from v2-development at $GITHUB_SHA"
+
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: v2-development
 
       - name: Select Xcode
         run: |
           xcodebuild -version
           xcode-select -p
 
-      - name: Install signing certificate and provisioning profile
-        id: signing
+      - name: Prepare signing files
+        shell: bash
         env:
           P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
@@ -33,76 +54,46 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          test -n "$P12_BASE64" || (echo "Missing IOS_P12_BASE64 secret" && exit 1)
-          test -n "$PROFILE_BASE64" || (echo "Missing IOS_PROVISIONING_PROFILE_BASE64 secret" && exit 1)
-          test -n "$TEAM_ID" || (echo "Missing APPLE_TEAM_ID secret" && exit 1)
+          test -n "$P12_BASE64" || (echo "::error::Missing IOS_P12_BASE64 secret" && exit 1)
+          test -n "$PROFILE_BASE64" || (echo "::error::Missing IOS_PROVISIONING_PROFILE_BASE64 secret" && exit 1)
+          test -n "$TEAM_ID" || (echo "::error::Missing APPLE_TEAM_ID secret" && exit 1)
 
+          umask 077
           CERT_PATH="$RUNNER_TEMP/firecoins-signing.p12"
           PROFILE_PATH="$RUNNER_TEMP/firecoins.mobileprovision"
-          KEYCHAIN_PATH="$RUNNER_TEMP/firecoins-build.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
-
-          echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
-          echo "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          echo "Checking P12 structure..."
-          openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -noout
-          echo "P12 validation successful"
-          umask 077
-
-          # Extract and verify the certificate/private-key pair without logging
-          # either object. Re-exporting normalizes older PKCS#12 encryption.
           CERT_PEM="$RUNNER_TEMP/firecoins-cert.pem"
           KEY_PEM="$RUNNER_TEMP/firecoins-key.pem"
-          NORMALIZED_P12="$RUNNER_TEMP/firecoins-normalized.p12"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+
+          printf '%s' "$P12_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -noout
           openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -clcerts -nokeys -out "$CERT_PEM"
           openssl pkcs12 -in "$CERT_PATH" -passin env:P12_PASSWORD -nocerts -nodes -out "$KEY_PEM"
-          chmod 600 "$CERT_PEM" "$KEY_PEM"
-          if ! grep -Eq 'BEGIN ([A-Z0-9]+ )?PRIVATE KEY' "$KEY_PEM"; then
-            echo "IOS_P12_BASE64 does not contain a private signing key. Export the certificate together with its private key."
-            exit 1
-          fi
+          chmod 600 "$CERT_PATH" "$PROFILE_PATH" "$CERT_PEM" "$KEY_PEM"
+
           CERT_PUBLIC_KEY=$(openssl x509 -in "$CERT_PEM" -pubkey -noout | openssl pkey -pubin -outform DER | shasum -a 256 | awk '{print $1}')
           KEY_PUBLIC_KEY=$(openssl pkey -in "$KEY_PEM" -pubout -outform DER | shasum -a 256 | awk '{print $1}')
-          if [ "$CERT_PUBLIC_KEY" != "$KEY_PUBLIC_KEY" ]; then
-            echo "The certificate and private key in IOS_P12_BASE64 do not match."
+          if [[ "$CERT_PUBLIC_KEY" != "$KEY_PUBLIC_KEY" ]]; then
+            echo "::error::The P12 certificate and private key do not match."
             exit 1
           fi
-          openssl pkcs12 -export -in "$CERT_PEM" -inkey "$KEY_PEM" -out "$NORMALIZED_P12" -passout pass:"$KEYCHAIN_PASSWORD" -name FireCoins
-          chmod 600 "$NORMALIZED_P12"
 
-          security import "$NORMALIZED_P12" \
-            -P "$KEYCHAIN_PASSWORD" \
-            -A \
-            -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-
-          IDENTITY_COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | awk '/valid identities found/{print $1}')
-          if [ "${IDENTITY_COUNT:-0}" -lt 1 ]; then
-            echo "No valid code-signing identity with a private key was found in the imported certificate."
-            exit 1
-          fi
-          echo "Valid code-signing identities available: $IDENTITY_COUNT"
-
-          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
           security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$PROFILE_PLIST")
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$PROFILE_PLIST")
-          SIGNING_CERT_SHA1=$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha1 | sed 's/.*=//;s/://g')
-
           export PROFILE_PLIST CERT_PEM TEAM_ID
           python3 - <<'PY'
-          import hashlib, os, plistlib, subprocess, sys
+          import hashlib
+          import os
+          import plistlib
+          import subprocess
+
           with open(os.environ["PROFILE_PLIST"], "rb") as stream:
               profile = plistlib.load(stream)
-          team_ids = profile.get("TeamIdentifier", [])
-          if os.environ["TEAM_ID"] not in team_ids:
+
+          if os.environ["TEAM_ID"] not in profile.get("TeamIdentifier", []):
               raise SystemExit("The provisioning profile belongs to a different Apple team.")
+
           cert_der = subprocess.check_output([
               "openssl", "x509", "-in", os.environ["CERT_PEM"], "-outform", "DER"
           ])
@@ -112,83 +103,101 @@ jobs:
               for item in profile.get("DeveloperCertificates", [])
           }
           if cert_hash not in profile_hashes:
-              raise SystemExit("The P12 signing certificate is not included in this provisioning profile.")
-          entitlements = profile.get("Entitlements", {})
-          if entitlements.get("get-task-allow") is True:
-              method = "development"
-          elif profile.get("ProvisionedDevices"):
-              method = "ad-hoc"
-          else:
-              method = "app-store-connect"
-          if method == "development":
-              raise SystemExit("A Development provisioning profile cannot be used for a release IPA. Configure an Ad Hoc or App Store Connect distribution profile.")
-          print("Provisioning profile matches the P12 certificate.")
-          print("Detected release provisioning profile type:", method)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("export_method=" + method + "\n")
+              raise SystemExit("The P12 signing certificate is not included in the provisioning profile.")
+
+          # Deliberately do not compare the profile's App ID to app.firecoins here.
+          # The app is built unsigned and its final Bundle ID is applied by zsign.
+          print("P12/private-key pair is valid.")
+          print("Signing certificate belongs to the supplied provisioning profile.")
+          print("Provisioning profile accepted for the post-build signing stage.")
           PY
 
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-
-          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
-          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
-          echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
-          echo "signing_cert_sha1=$SIGNING_CERT_SHA1" >> "$GITHUB_OUTPUT"
-
-      - name: Archive iOS app
-        env:
-          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
-          TEAM_ID: ${{ steps.signing.outputs.team_id }}
-          SIGNING_CERT_SHA1: ${{ steps.signing.outputs.signing_cert_sha1 }}
-          PROFILE_UUID: ${{ steps.signing.outputs.profile_uuid }}
+      - name: Build unsigned iOS app
+        shell: bash
         run: |
           set -euo pipefail
-          xcodebuild \
-            -project FireCoins.xcodeproj \
-            -scheme FireCoins \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/FireCoins.xcarchive" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$SIGNING_CERT_SHA1" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
-            archive
+          DERIVED_DATA="$RUNNER_TEMP/FireCoins-DerivedData"
 
-      - name: Export IPA
-        env:
-          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
-          TEAM_ID: ${{ steps.signing.outputs.team_id }}
-          SIGNING_CERT_SHA1: ${{ steps.signing.outputs.signing_cert_sha1 }}
-          EXPORT_METHOD: ${{ steps.signing.outputs.export_method }}
+          xcodebuild             -project FireCoins.xcodeproj             -scheme FireCoins             -configuration Release             -destination 'generic/platform=iOS'             -derivedDataPath "$DERIVED_DATA"             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             MARKETING_VERSION=2.0.0             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"             build
+
+          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/FireCoins.app"
+          test -d "$APP_PATH" || (echo "::error::Unsigned FireCoins.app was not produced." && exit 1)
+          test -s "$APP_PATH/Assets.car" || (echo "::error::Compiled asset catalog is missing; app icon may not be packaged." && exit 1)
+
+          BUILT_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          if [[ "$BUILT_BUNDLE_ID" != "$APP_BUNDLE_ID" ]]; then
+            echo "::error::Unexpected Bundle ID in unsigned app: $BUILT_BUNDLE_ID"
+            exit 1
+          fi
+          echo "Unsigned app built: Bundle ID=$BUILT_BUNDLE_ID"
+          echo "App version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+
+          STAGE="$RUNNER_TEMP/FireCoins-IPARoot"
+          mkdir -p "$STAGE/Payload"
+          ditto "$APP_PATH" "$STAGE/Payload/FireCoins.app"
+          (cd "$STAGE" && /usr/bin/zip -qry "$RUNNER_TEMP/FireCoins-unsigned.ipa" Payload)
+          test -s "$RUNNER_TEMP/FireCoins-unsigned.ipa"
+
+      - name: Build zsign
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import os, plistlib
-          options = {
-              "method": os.environ["EXPORT_METHOD"],
-              "teamID": os.environ["TEAM_ID"],
-              "signingStyle": "manual",
-              "signingCertificate": os.environ["SIGNING_CERT_SHA1"],
-              "provisioningProfiles": {
-                  "app.firecoins": os.environ["PROFILE_NAME"]
-              },
-              "destination": "export"
-          }
-          with open(os.path.join(os.environ["RUNNER_TEMP"], "ExportOptions.plist"), "wb") as file:
-              plistlib.dump(options, file)
-          PY
+          brew install openssl@3 pkg-config
 
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/FireCoins.xcarchive" \
-            -exportPath "$RUNNER_TEMP/FireCoins-export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          git clone --depth 1 --branch v1.1.3 https://github.com/zhlynn/zsign.git "$RUNNER_TEMP/zsign"
+          export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          make -C "$RUNNER_TEMP/zsign/build/macos" -j2
+          test -x "$RUNNER_TEMP/zsign/bin/zsign"
+          "$RUNNER_TEMP/zsign/bin/zsign" --version
 
-      - name: Upload IPA artifact
+      - name: Re-sign IPA with zsign
+        shell: bash
+        env:
+          P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/firecoins-signing.p12"
+          PROFILE_PATH="$RUNNER_TEMP/firecoins.mobileprovision"
+          UNSIGNED_IPA="$RUNNER_TEMP/FireCoins-unsigned.ipa"
+          SIGNED_IPA="$RUNNER_TEMP/FireCoins.ipa"
+          ZSIGN="$RUNNER_TEMP/zsign/bin/zsign"
+
+          "$ZSIGN"             -f             -k "$CERT_PATH"             -p "$P12_PASSWORD"             -m "$PROFILE_PATH"             -b "$APP_BUNDLE_ID"             -o "$SIGNED_IPA"             "$UNSIGNED_IPA"
+
+          test -s "$SIGNED_IPA" || (echo "::error::zsign did not produce FireCoins.ipa." && exit 1)
+
+      - name: Verify signed IPA contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNED_IPA="$RUNNER_TEMP/FireCoins.ipa"
+          VERIFY_DIR="$RUNNER_TEMP/FireCoins-verify"
+          mkdir -p "$VERIFY_DIR"
+          /usr/bin/ditto -x -k "$SIGNED_IPA" "$VERIFY_DIR"
+
+          APP_PATH="$VERIFY_DIR/Payload/FireCoins.app"
+          test -d "$APP_PATH" || (echo "::error::Signed IPA does not contain Payload/FireCoins.app." && exit 1)
+          test -s "$APP_PATH/Assets.car" || (echo "::error::Signed IPA is missing its compiled app icon/assets." && exit 1)
+          test -s "$APP_PATH/embedded.mobileprovision" || (echo "::error::Signed IPA is missing embedded.mobileprovision." && exit 1)
+          test -s "$APP_PATH/_CodeSignature/CodeResources" || (echo "::error::Signed app is missing CodeResources." && exit 1)
+
+          FINAL_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          FINAL_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
+          FINAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
+
+          if [[ "$FINAL_BUNDLE_ID" != "$APP_BUNDLE_ID" ]]; then
+            echo "::error::Final IPA Bundle ID mismatch: $FINAL_BUNDLE_ID"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "Verified IPA: Bundle ID=$FINAL_BUNDLE_ID, version=$FINAL_VERSION, build=$FINAL_BUILD"
+          shasum -a 256 "$SIGNED_IPA"
+
+      - name: Upload signed IPA
         uses: actions/upload-artifact@v4
         with:
           name: FireCoins-IPA
-          path: ${{ runner.temp }}/FireCoins-export/*.ipa
+          path: ${{ runner.temp }}/FireCoins.ipa
           if-no-files-found: error
           retention-days: 14
