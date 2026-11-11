@@ -14,8 +14,6 @@ struct AdminPanelView: View {
     @State private var alertMessage: String?
     @State private var selectedProofData: Data?
     @State private var showingProof = false
-    @State private var showingInvitationConfirmation = false
-    @State private var reissuedInvitationCode: String?
 
     private let creditReasons = ["Хорошая оценка", "Победа в конкурсе", "Другая причина"]
     private let debitReasons = ["Неубранные трусы", "Оставленные тапки", "Плохая оценка", "Другая причина"]
@@ -48,7 +46,6 @@ struct AdminPanelView: View {
                         Text("Администрирование счёта Артемия.")
                             .font(.system(size: 13)).foregroundStyle(FCTheme.muted)
                     }
-                    invitationManagement
                     transactionComposer
                     disputeQueue
                     withdrawalQueue
@@ -81,55 +78,7 @@ struct AdminPanelView: View {
         .alert("Fire Coins", isPresented: Binding(get: { alertMessage != nil }, set: { if !$0 { alertMessage = nil } })) {
             Button("Понятно", role: .cancel) { alertMessage = nil }
         } message: { Text(alertMessage ?? "") }
-        .confirmationDialog("Перевыпустить код приглашения?", isPresented: $showingInvitationConfirmation, titleVisibility: .visible) {
-            Button("Перевыпустить код", role: .destructive, action: reissueAdminInvitation)
-            Button("Отмена", role: .cancel) {}
-        } message: {
-            Text("Старый код перестанет работать. Новый код будет показан только на этом устройстве.")
-        }
-    }
 
-    private var invitationManagement: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            SectionHeading(title: "Доступ")
-            Text("Перевыпуск создаёт новое приглашение для аккаунта администратора и аннулирует предыдущее. Активные сессии не затрагиваются.")
-                .font(.system(size: 12))
-                .foregroundStyle(FCTheme.muted)
-            if let reissuedInvitationCode {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("НОВЫЙ КОД · ПОКАЖЕТСЯ ОДИН РАЗ")
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(1.1)
-                        .foregroundStyle(FCTheme.muted)
-                    Text(reissuedInvitationCode)
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(FCTheme.accent)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    smallAction("Скопировать код", color: FCTheme.accent) {
-                        UIPasteboard.general.string = reissuedInvitationCode
-                        alertMessage = "Код скопирован."
-                    }
-                }
-                .padding(12)
-                .background(FCTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            PrimaryActionButton(title: "Перевыпустить код", systemImage: "key.horizontal", action: {
-                showingInvitationConfirmation = true
-            })
-        }
-        .fcCard()
-    }
-
-    private func reissueAdminInvitation() {
-        Task { @MainActor in
-            do {
-                reissuedInvitationCode = try await store.reissueAdminInvitation()
-                alertMessage = "Новый код создан. Скопируйте его и сохраните в надёжном месте."
-            } catch {
-                alertMessage = error.localizedDescription
-            }
-        }
     }
 
     private var transactionComposer: some View {
