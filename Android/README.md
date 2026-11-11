@@ -1,48 +1,61 @@
-# Fire Coins Android
+# Fire Coins для Android
 
-Native Android client built with Kotlin and Jetpack Compose.
+Нативное приложение Fire Coins для Android. Используются Kotlin, Jetpack Compose и Material 3.
 
-## Open and build
+## Открытие и сборка
 
-1. Open this `Android/` directory in Android Studio.
-2. Use JDK 17 for Gradle.
-3. Let Android Studio install the Android SDK platform/build tools required by `app/build.gradle.kts`.
-4. Select the app configuration and run it on an Android 8.0+ device or emulator.
+1. Откройте каталог `Android/` в Android Studio.
+2. Используйте JDK 17 для Gradle.
+3. Установите Android SDK и Build Tools, необходимые проекту.
+4. Выберите конфигурацию приложения и запустите его на Android 8.0+ или эмуляторе.
 
-The GitHub Actions workflow `.github/workflows/android-build.yml` builds a debug APK. The APK is uploaded as the `fire-coins-android-debug` artifact on a successful run.
+Workflow `.github/workflows/android-build.yml` собирает отладочный APK. Подписанный релизный APK создаётся отдельным workflow `.github/workflows/android-release.yml`.
 
-## Authentication
+## Авторизация
 
-The app uses the same one-time invitation exchange as the iOS client:
-- `POST /api/mobile/auth`
-- `POST /api/mobile/refresh`
-- `POST /api/mobile/logout`
+Приложение использует одноразовый код-приглашение:
 
-Session tokens are stored using encrypted preferences backed by Android Keystore. No invitation code is bundled in the application.
+- `POST /api/mobile/auth` — вход по приглашению;
+- `POST /api/mobile/refresh` — обновление сессии;
+- `POST /api/mobile/logout` — завершение сессии.
 
-## API
+Токены сохраняются в защищённом хранилище Android Keystore. Код приглашения не встраивается в APK.
 
-The API base URL is configured in `data/ApiClient.kt` and currently points to the Fire Coins HTTPS endpoint. Do not point release builds to a plain HTTP or development endpoint.
+## API и данные
 
-## Signed release APK
+Базовый HTTPS-адрес API задаётся в `data/ApiClient.kt`. Не направляйте релизные сборки на HTTP или отладочный сервер.
 
-The manual workflow `.github/workflows/android-release.yml` produces a signed release APK. It requires these repository Actions secrets:
+Приложение не подключается к SQLite напрямую. Баланс, история, заявки и права доступа определяются сервером.
 
-- `ANDROID_KEYSTORE_BASE64` — Base64 contents of the private JKS/PKCS12 keystore.
-- `ANDROID_KEYSTORE_PASSWORD` — keystore password.
-- `ANDROID_KEY_ALIAS` — signing key alias.
-- `ANDROID_KEY_PASSWORD` — signing key password.
+## Фотографии-доказательства
 
-Generate the keystore once on a trusted local Windows machine (not in the repository). Run this in PowerShell; `keytool` prompts for the passwords without putting them in command history:
+Новые изображения загружаются на сервер Fire Coins и хранятся в закрытом каталоге VPS. API определяет формат файла по его содержимому и отдаёт корректный MIME-тип. Загрузка и просмотр требуют авторизованной сессии.
 
-```powershell
-$keyStorePath = Join-Path $env:USERPROFILE "firecoins-release.jks"
-keytool -genkeypair -v -keystore $keyStorePath -alias firecoins -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Fire Coins"
-[Convert]::ToBase64String([IO.File]::ReadAllBytes($keyStorePath)) | Set-Clipboard
-```
+## Push-уведомления
 
-When prompted for the key password, press Enter to reuse the keystore password. Then add the four secrets above under GitHub repository Settings → Secrets and variables → Actions. Paste the Base64 value from the clipboard only into the `ANDROID_KEYSTORE_BASE64` secret. Do not commit or share the keystore, its Base64 contents, or passwords.
+Планируемая доставка системных уведомлений Android выполняется через Firebase Cloud Messaging.
 
-After configuring the secrets, open Actions → Build signed Android APK → Run workflow. The artifact is named `fire-coins-android-release`.
+Для активации нужны Firebase-проект и файл конфигурации Android-приложения `google-services.json` либо эквивалентные настройки Firebase. Файл конфигурации не содержит приватного ключа серверной отправки, но всё равно должен соответствовать именно приложению Fire Coins.
 
-Keep this keystore permanently backed up in a private secure location. Future app updates must use the same signing key.
+На Android 13+ приложение должно запросить разрешение на отображение уведомлений. Токен устройства регистрируется на сервере под текущим авторизованным аккаунтом.
+
+## Подписанный APK
+
+Workflow `.github/workflows/android-release.yml` создаёт подписанный APK. Он использует следующие секреты GitHub Actions:
+
+- `ANDROID_KEYSTORE_BASE64` — Base64 содержимое приватного JKS/PKCS12 keystore;
+- `ANDROID_KEYSTORE_PASSWORD` — пароль keystore;
+- `ANDROID_KEY_ALIAS` — псевдоним ключа;
+- `ANDROID_KEY_PASSWORD` — пароль ключа.
+
+Создайте keystore один раз на доверенном локальном компьютере. Не загружайте сам файл, его Base64-содержимое или пароли в репозиторий и переписку. Сохраните резервную копию keystore в надёжном приватном месте.
+
+**Все последующие версии Android должны подписываться тем же ключом.** Иначе Android не сможет установить обновление поверх уже установленного приложения.
+
+## Проверка
+
+- Отладочная сборка: `gradle --no-daemon :app:assembleDebug`.
+- Релизная сборка: `gradle --no-daemon :app:assembleRelease`.
+- Проверка подписи: `apksigner verify --verbose <путь-к-apk>`.
+
+После сборки проверяйте APK на реальном устройстве, в том числе вход, восстановление сессии, загрузку доказательств и получение уведомлений.

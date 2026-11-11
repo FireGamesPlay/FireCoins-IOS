@@ -1,91 +1,120 @@
 # Fire Coins V2
 
-Private two-account points system with native iOS and Android clients, a shared API and the existing Telegram bot.
+Закрытая система баллов для двух аккаунтов с нативными приложениями iOS и Android и единым серверным API.
 
-**Active development branch:** \`v2-development\`  
-**Production baseline:** current Telegram bot + aiohttp Mini App API  
-**Database constraint:** keep the existing \`/root/ScoringSystemBot/points.db\` and its schema intact.
+**Основная ветка разработки:** `v2-development`  
+**Сервер:** VPS проекта Fire Coins, API на Python `aiohttp`  
+**Рабочая база:** `/root/ScoringSystemBot/points.db`
 
-## Product
+## Возможности
 
-Fire Coins is intentionally limited to two server-configured accounts:
+В системе предусмотрены только два заранее настроенных аккаунта:
 
-- **Artemiy** — member account.
-- **Father** — administrator account.
+- **Артемий** — участник.
+- **Макс** — администратор.
 
-V2 replaces the V1 demo repository with a server-authoritative implementation. The UI keeps the original charcoal/bronze visual language and navigation structure.
+Основные функции:
 
-### Features
+- Вход только по одноразовым персональным приглашениям.
+- Общий баланс и история операций на iOS и Android.
+- Начисление и списание баллов администратором.
+- Фотодоказательства для отдельных причин списания.
+- Оспаривание операций, одобрение и отклонение споров.
+- Заявки на вывод баллов и решения администратора.
+- Серверная рулетка с лимитом запусков.
+- Личные заметки с общей историей для двух аккаунтов.
+- Защищённые мобильные сессии с обновлением токенов.
+- Push-уведомления о важных событиях — после завершения настройки Firebase и APNs.
+- Изолированный тестовый режим (sandbox), не использующий рабочую базу.
 
-- Invitation-only account activation with one-time server-issued invitation codes.
-- Server-side balance and transaction history.
-- Admin credit/debit operations and photo evidence for selected reasons.
-- Dispute requests, approval/rejection and compensating transaction history.
-- Withdrawal requests and admin decisions.
-- Server-authoritative 50/50 roulette, rolling seven-day limit and transaction-backed round history.
-- Persistent notes visible to both accounts, with Telegram notifications.
-- Authenticated proof image downloads.
-- Persistent mobile sessions with refresh-token rotation and logout revocation.
-- Existing Telegram Mini App authentication remains supported.
+## Структура репозитория
 
-## Repository layout
+- `App/`, `Core/`, `Features/` — приложение iOS на SwiftUI.
+- `Android/` — приложение Android на Kotlin и Jetpack Compose.
+- `Backend/api/` — серверные модули.
+- `Backend/patches/` — скрипты подготовки и применения серверных изменений.
+- `Backend/tests/` — изолированные тесты Python.
+- `docs/` — документация архитектуры.
+- `.github/workflows/` — автоматическая сборка и проверки.
 
-- \`App/\`, \`Core/\`, \`Features/\` — iOS SwiftUI app.
-- \`Android/\` — native Kotlin + Jetpack Compose Android app.
-- \`Backend/api/\` — backend modules and sidecar stores prepared for deployment.
-- \`Backend/patches/\` — guarded, backup-first scripts to apply server changes.
-- \`Backend/tests/\` — isolated Python tests.
-- \`docs/FireCoins_V2_Architecture.md\` — architecture and rollout requirements.
-- \`.github/workflows/\` — backend tests, iOS simulator build, Android APK build and existing signed IPA workflow.
+## Приглашения и доступ
 
-## Invitation security
+Коды приглашений создаются только на сервере, привязаны к роли и используются один раз. На сервере хранятся только их защищённые хеши. Не добавляйте коды в исходники, GitHub, логи или сборки.
 
-The invitation strings once embedded in the V1 prototype were published in the repository and must be considered compromised. They have been removed from the V2 application source and must never be reused.
+Перевыпуск приглашения администратора выполняется из приложения. Новый код показывается один раз; прежний код этой роли перестаёт работать. Существующие мобильные сессии при этом сохраняются.
 
-V2 invitations are generated only on the server. The server stores salted password hashes, binds each code to one role and accepts it once. Codes are not committed to GitHub or embedded in iOS/Android binaries. The bootstrap command prints new codes once on the VPS; keep them private.
+## Рабочая база и данные
 
-## Backend and database safety
+Рабочая база находится здесь:
 
-The deployed backend is Python \`aiohttp\`. The Telegram bot and API use the same SQLite file:
+`/root/ScoringSystemBot/points.db`
 
-\`/root/ScoringSystemBot/points.db\`
+Это исходная база, которую использовали предыдущий Telegram-бот и веб-приложение. Она остаётся источником истины для баланса, транзакций и заявок.
 
-V2 intentionally does not introduce a new business database or change the SQLite schema. Mobile authentication and shared note history use separate private files under \`.private/\`, outside the SQLite database. The business database remains the authority for balances, transactions and withdrawals.
+**Нельзя пересоздавать рабочую БД, заменять её тестовой копией или менять её схему без отдельного согласованного плана.**
 
-Do not run deployment patches against production until:
-1. the bot token has been rotated if the previously hardcoded token was still active;
-2. a verified backup and integrity check of \`points.db\` exist;
-3. backend tests and staging checks pass;
-4. the current service environment has been checked without exposing secrets;
-5. an operator has approved the production switch.
+Дополнительные данные приложения хранятся отдельно от рабочей SQLite-базы:
 
-The patch scripts are not self-deploying and do not restart services. They create backups and modify source files only. Production changes must be carried out as a separate, reviewed deployment.
+- мобильные приглашения и сессии — в закрытом служебном хранилище;
+- заметки — в отдельном защищённом хранилище;
+- фотографии-доказательства — в приватном каталоге Fire Coins на VPS;
+- токены push-устройств — в отдельном приватном хранилище.
 
-## iOS build
+Фотографии новых операций больше не зависят от Telegram. Старые фотографии перенесены в собственное хранилище Fire Coins; исходные значения ссылок в таблице транзакций сохранены.
 
-Open \`FireCoins.xcodeproj\` in Xcode or use the GitHub Actions iOS build. The project targets iOS 17+. Mobile credentials are stored in Keychain; the local app role is not used as server authorization.
+## Тестовый режим
 
-The existing \`.github/workflows/build-ipa.yml\` remains available for signed IPA distribution. Its Apple signing credentials belong in GitHub Actions Secrets, never in the repository or chat.
+Тестовый режим — отдельная песочница для проверки функций приложения.
 
-## Android build
+- При включении сервер создаёт отдельную пустую тестовую SQLite-базу только со структурой таблиц.
+- Балансы, транзакции, заявки, доказательства и заметки в тестовом режиме отделены от рабочих данных.
+- Режим общий для обоих аккаунтов: включить и выключить его может как Артемий, так и Макс.
+- При выключении сервер возвращает приложение к рабочей БД и удаляет временные данные песочницы.
+- Если состояние тестовой базы невозможно проверить, сервер должен отказать в операции, а не переключаться молча на рабочую базу.
 
-Open the \`Android/\` directory in Android Studio. The Android app uses Kotlin, Jetpack Compose and encrypted session storage backed by Android Keystore. The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
+Рабочая БД не должна использоваться тестовыми операциями ни при каких обстоятельствах.
 
-The debug APK is for installation/testing. A production release needs a separately managed signing key and an explicit release workflow.
+## Сборка iOS
 
-## Testing
+Откройте `FireCoins.xcodeproj` в Xcode или запустите workflow GitHub Actions.
 
-- Backend tests: \`python -m unittest discover -s Backend/tests -v\` with \`PYTHONPATH=Backend\`.
-- Backend syntax: \`python -m compileall -q Backend\`.
-- iOS: GitHub Actions builds the \`FireCoins\` scheme for the iOS Simulator.
-- Android: GitHub Actions runs \`assembleDebug\` and uploads the APK.
+Постоянный Bundle ID приложения: `app.firecoins`. Для подписанной IPA используется отдельный этап переподписания готовой IPA; Xcode сначала собирает приложение без подписи, после чего `zsign` применяет сертификат и provisioning profile.
 
-A green CI run proves the code in that commit compiles/tests in the runner; it does not prove production API connectivity or authorize deployment.
+Сертификаты, пароли и профили хранятся только в защищённых GitHub Actions Secrets. Не добавляйте их в репозиторий или переписку.
 
-## Security notes
+## Сборка Android
 
-- Never commit bot tokens, new invitation codes, session tokens, signing keys or private certificates.
-- The Telegram bot token must be read from the \`TG_BOT_TOKEN\` service environment variable.
-- Mobile roles and balances are derived from the server, not client-supplied fields.
-- The API continues to accept verified Telegram \`X-Telegram-Init-Data\` requests.
-- Do not share \`.env\`, process environments, credentials or private auth-store files.
+Откройте каталог `Android/` в Android Studio. Для Gradle используется JDK 17.
+
+Для подписанного APK нужен постоянный приватный ключ подписи. Он хранится вне репозитория и передаётся GitHub Actions только через Secrets. Будущие версии приложения должны подписываться тем же ключом, чтобы устанавливаться поверх предыдущих.
+
+## Push-уведомления
+
+Целевая схема — доставка через Firebase Cloud Messaging (FCM) с поддержкой APNs для iOS. Сервер определяет получателя по роли и событию, а не принимает его от клиента.
+
+Для завершения настройки нужны:
+- Firebase-проект и конфигурация Android-приложения;
+- конфигурация iOS-приложения Firebase;
+- APNs Authentication Key в Firebase Console;
+- серверные учётные данные Firebase, размещённые только на VPS.
+
+До добавления этих конфигураций сборка приложений не должна содержать фиктивные ключи или случайные тестовые токены.
+
+## Проверки
+
+- Backend: `PYTHONPATH=Backend python -m unittest discover -s Backend/tests -v`.
+- Python-синтаксис: `python -m compileall -q Backend`.
+- iOS: workflow собирает схему `FireCoins` для iOS Simulator.
+- Android: workflow собирает APK для проверки.
+- Release-workflow дополнительно подписывает Android APK или iOS IPA и проверяет подпись.
+
+Успешная CI-сборка подтверждает, что код компилируется и тесты проходят в среде GitHub Actions. Она не заменяет проверку установки на реальном устройстве и проверку push-доставки.
+
+## Безопасность
+
+- Не публикуйте токены, коды приглашений, сессионные данные, приватные ключи и пароли.
+- Все изменения баланса и статусы заявок проверяет сервер.
+- Клиент не может самостоятельно назначить себе роль или изменить баланс.
+- Все мобильные API-запросы выполняются по HTTPS.
+- Рабочая база и её резервные копии не должны попадать в Git.
+- Перед любым изменением production необходимо проверить целостность БД и план отката.

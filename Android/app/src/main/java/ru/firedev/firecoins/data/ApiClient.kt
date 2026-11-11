@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -29,6 +30,21 @@ class ApiClient(context: Context) {
         val session = response.optJSONObject("session") ?: throw IOException("Сервер не вернул сессию.")
         storeSession(session)
         return user
+    }
+
+    suspend fun reissueAdminInvitation(): String {
+        val response = call(
+            path = "/api/mobile/invitations/reissue",
+            method = "POST",
+            payload = JSONObject()
+        )
+        val invitation = response.optJSONObject("invitation")
+            ?: throw IOException("Сервер не вернул новое приглашение.")
+        if (invitation.optString("role") != "father") {
+            throw IOException("Сервер вернул приглашение для неизвестной роли.")
+        }
+        return invitation.optString("code").takeIf { it.isNotBlank() }
+            ?: throw IOException("Сервер не вернул код приглашения.")
     }
 
     suspend fun restoreSession(): JSONObject? {
@@ -86,15 +102,61 @@ class ApiClient(context: Context) {
             ?: throw IOException("Сервер не вернул идентификатор фотографии.")
     }
 
-    suspend fun downloadProof(transactionId: Long): ByteArray {
+    suspend fun downloadProof(transactionId: Long): ByteArray =
+        downloadProofInternal(transactionId, retryAfterRefresh = true)
+
+    private suspend fun downloadProofInternal(
+        transactionId: Long,
+        retryAfterRefresh: Boolean
+    ): ByteArray {
+        require(transactionId > 0) { "Некорректный идентификатор фотографии." }
         return withContext(Dispatchers.IO) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                val text = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IOException(parseError(text, code))
+            try {
+                connection.connectTimeout = 12_000
+                connection.readTimeout = 20_000
+                val code = connection.responseCode
+                if (code == HttpURLConnection.HTTP_UNAUTHORIZED && retryAfterRefresh) {
+                    connection.disconnect()
+                    refreshSession()
+                    return@withContext downloadProofInternal(transactionId, retryAfterRefresh = false)
+                }
+                if (code !in 200..299) {
+                    val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                    throw IOException(parseError(text, code))
+                }
+
+                val contentType = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
+                val declaredLength = connection.contentLengthLong
+                if (declaredLength > MAX_PROOF_BYTES) {
+                    throw IOException("Фотография слишком большая для просмотра.")
+                }
+
+                connection.inputStream.use { input ->
+                    val output = ByteArrayOutputStream(
+                        if (declaredLength in 1..MAX_PROOF_BYTES) declaredLength.toInt() else 32 * 1024
+                    )
+                    val buffer = ByteArray(16 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_PROOF_BYTES) {
+                            throw IOException("Фотография слишком большая для просмотра.")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    val bytes = output.toByteArray()
+                    if (bytes.isEmpty()) throw IOException("Сервер вернул пустую фотографию.")
+                    if (!contentType.startsWith("image/") && !isSupportedImage(bytes)) {
+                        throw IOException("Сервер вернул не фотографию. Попробуйте обновить приложение.")
+                    }
+                    bytes
+                }
+            } finally {
+                connection.disconnect()
             }
-            connection.inputStream.use { input -> input.readBytes() }
         }
     }
 
@@ -170,8 +232,8 @@ class ApiClient(context: Context) {
         val url = URL("$BASE_URL$path")
         return (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 25_000
+            connectTimeout = 20_000
+            readTimeout = 45_000
             useCaches = false
             setRequestProperty("Accept", "application/json")
             if (authenticated) {
@@ -195,6 +257,33 @@ class ApiClient(context: Context) {
         }
     }
 
+    private fun isSupportedImage(bytes: ByteArray): Boolean {
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xFF.toByte() &&
+            bytes[1] == 0xD8.toByte() &&
+            bytes[2] == 0xFF.toByte()
+        ) return true
+
+        if (bytes.size >= 8 &&
+            bytes.copyOfRange(0, 8).contentEquals(
+                byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+            )
+        ) return true
+
+        if (bytes.size >= 6) {
+            val header = bytes.copyOfRange(0, 6).decodeToString()
+            if (header == "GIF87a" || header == "GIF89a") return true
+        }
+
+        if (bytes.size >= 12 &&
+            bytes.copyOfRange(0, 4).decodeToString() == "RIFF" &&
+            bytes.copyOfRange(8, 12).decodeToString() == "WEBP"
+        ) return true
+
+        return bytes.size >= 12 &&
+            bytes.copyOfRange(4, 8).decodeToString() == "ftyp"
+    }
+
     private fun parseError(text: String, code: Int): String {
         return runCatching { JSONObject(text).optJSONObject("error")?.optString("message") }
             .getOrNull()?.takeIf { !it.isNullOrBlank() } ?: "Ошибка сервера ($code)."
@@ -202,5 +291,6 @@ class ApiClient(context: Context) {
 
     private companion object {
         const val BASE_URL = "https://app.firegames-it.tech"
+        const val MAX_PROOF_BYTES = 12L * 1024L * 1024L
     }
 }

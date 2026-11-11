@@ -41,7 +41,7 @@ struct HomeView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
-                Text(role == .father ? "Папа" : "Артемий")
+                Text(role == .father ? "Макс" : "Артемий")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(FCTheme.text)
                 Text(role.subtitle)

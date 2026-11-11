@@ -1,5 +1,11 @@
 name: Build signed Android APK
 on:
+  push:
+    branches:
+      - v2-development
+    paths:
+      - "Android/**"
+      - ".github/workflows/android-release.yml"
   workflow_dispatch:
 
 permissions:

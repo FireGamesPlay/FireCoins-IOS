@@ -1,5 +1,7 @@
 package ru.firedev.firecoins.data
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 
 data class FcTransaction(
@@ -58,39 +60,35 @@ class FireCoinsRepository(private val api: ApiClient) {
     }
 
     suspend fun logout() = api.logout()
+    suspend fun reissueAdminInvitation(): String = api.reissueAdminInvitation()
+
 
     fun hasStoredSession(): Boolean = api.hasSession
 
-    suspend fun loadSnapshot(role: String): FireCoinsSnapshot {
-        val dashboard = api.get("/api/dashboard")
+    suspend fun loadSnapshot(role: String): FireCoinsSnapshot = coroutineScope {
+        val dashboardRequest = async { api.get("/api/dashboard") }
+        val historyRequest = async { api.get("/api/history?period=all&limit=200") }
+        val withdrawalsRequest = async { api.get("/api/withdrawals") }
+        val notesRequest = async { api.get("/api/notes?limit=100") }
+        val casinoRequest = if (role == "artemiy") async { api.get("/api/casino/status") } else null
+        val disputesRequest = if (role == "father") async { api.get("/api/disputes/pending") } else null
+
+        val dashboard = dashboardRequest.await()
         val data = dashboard.optJSONObject("data") ?: JSONObject()
         val balanceObject = data.optJSONObject("balance") ?: JSONObject()
         val balance = balanceObject.optInt("balance", 0)
 
-        val history = api.get("/api/history?period=all&limit=200").optJSONArray("items")
-        val transactions = history.toTransactionList()
+        val transactions = historyRequest.await().optJSONArray("items").toTransactionList()
+        val withdrawals = withdrawalsRequest.await().optJSONArray("items").toWithdrawalList()
+        val notes = notesRequest.await().optJSONArray("items").toNoteList()
 
-        val withdrawalsJson = api.get("/api/withdrawals").optJSONArray("items")
-        val withdrawals = withdrawalsJson.toWithdrawalList()
+        val casino = casinoRequest?.await()?.optJSONObject("casino") ?: JSONObject()
+        val spinsLeft = casino.optInt("spins_left", 0)
+        val rounds = casino.optJSONArray("rounds").toCasinoList()
+        val pendingDisputes = disputesRequest?.await()?.optJSONArray("items").toTransactionList()
+            ?: emptyList()
 
-        val notesJson = api.get("/api/notes?limit=100").optJSONArray("items")
-        val notes = notesJson.toNoteList()
-
-        var spinsLeft = 0
-        var rounds = emptyList<FcCasinoRound>()
-        if (role == "artemiy") {
-            val casino = api.get("/api/casino/status").optJSONObject("casino") ?: JSONObject()
-            spinsLeft = casino.optInt("spins_left", 0)
-            rounds = casino.optJSONArray("rounds").toCasinoList()
-        }
-
-        val pendingDisputes = if (role == "father") {
-            api.get("/api/disputes/pending").optJSONArray("items").toTransactionList()
-        } else {
-            emptyList()
-        }
-
-        return FireCoinsSnapshot(
+        FireCoinsSnapshot(
             role = role,
             balance = balance,
             transactions = transactions,

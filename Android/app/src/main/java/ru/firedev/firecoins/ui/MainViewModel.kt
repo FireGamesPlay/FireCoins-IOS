@@ -27,7 +27,8 @@ data class AppUiState(
     val rouletteResult: RouletteResult? = null,
     val sessionRecovery: Boolean = false,
     val message: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val reissuedInvitationCode: String? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -130,6 +131,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendNote(text: String) {
         execute("Заметка отправлена.") { repository.sendNote(text) }
     }
+
+    suspend fun downloadProof(transactionId: Long): ByteArray {
+        return repository.downloadProof(transactionId)
+    }
+
+    fun reissueInvitation() {
+        if (state.value.role != "father") return
+        viewModelScope.launch {
+            state.value = state.value.copy(isLoading = true, error = null, message = null)
+            try {
+                val code = repository.reissueAdminInvitation()
+                state.value = state.value.copy(
+                    isLoading = false,
+                    reissuedInvitationCode = code,
+                    message = "Новый код создан. Скопируйте и сохраните его."
+                )
+            } catch (error: Exception) {
+                state.value = state.value.copy(
+                    isLoading = false,
+                    error = error.message ?: "Не удалось перевыпустить код."
+                )
+            }
+        }
+    }
+
 
     fun clearMessage() {
         state.value = state.value.copy(message = null, error = null)

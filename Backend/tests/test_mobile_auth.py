@@ -99,6 +99,44 @@ class MobileAuthStoreTests(unittest.TestCase):
             self.store.redeem_invitation(invalid, "203.0.113.10")
         self.assertEqual(raised.exception.status, 429)
 
+    def test_reissue_replaces_old_code_and_preserves_existing_sessions(self) -> None:
+        codes = self.bootstrap()
+        _, _, session = self.store.redeem_invitation(codes["father"], "127.0.0.1")
+
+        replacement = self.store.reissue_invitation("father")
+        self.assertNotEqual(replacement, codes["father"])
+        self.assertEqual(
+            self.store.authenticate_access_token(session["access_token"]),
+            (111, "father"),
+        )
+        with self.assertRaises(mobile_auth.MobileAuthError):
+            self.store.redeem_invitation(codes["father"], "127.0.0.2")
+
+        user_id, role, _ = self.store.redeem_invitation(replacement, "127.0.0.3")
+        self.assertEqual((user_id, role), (111, "father"))
+
+    def test_reissue_can_issue_a_new_code_after_previous_code_was_used(self) -> None:
+        codes = self.bootstrap()
+        self.store.redeem_invitation(codes["father"], "127.0.0.1")
+        replacement = self.store.reissue_invitation("father")
+        user_id, role, _ = self.store.redeem_invitation(replacement, "127.0.0.2")
+        self.assertEqual((user_id, role), (111, "father"))
+
+    def test_reissue_allows_each_account_to_rotate_its_own_invitation(self) -> None:
+        codes = self.bootstrap()
+        replacement = self.store.reissue_invitation("artemiy")
+        self.assertNotEqual(replacement, codes["artemiy"])
+        user_id, role, _ = self.store.redeem_invitation(replacement, "127.0.0.9")
+        self.assertEqual((user_id, role), (222, "artemiy"))
+        with self.assertRaises(mobile_auth.MobileAuthError):
+            self.store.redeem_invitation(codes["artemiy"], "127.0.0.10")
+
+    def test_reissue_rejects_unknown_role(self) -> None:
+        self.bootstrap()
+        with self.assertRaises(mobile_auth.MobileAuthError) as raised:
+            self.store.reissue_invitation("unknown")
+        self.assertEqual(raised.exception.status, 400)
+
     def test_bootstrap_refuses_to_overwrite_existing_codes(self) -> None:
         self.bootstrap()
         with self.assertRaises(RuntimeError):

@@ -1,116 +1,105 @@
-# Fire Coins V2 — Backend deployment package
+# Fire Coins V2 — серверная часть
 
-This directory contains additive API modules, guarded patch scripts and isolated tests for the existing Fire Coins VPS.
+В этом каталоге находятся модули API, изолированные хранилища, скрипты подготовки и тесты для VPS Fire Coins.
 
-**These files do not deploy themselves and do not restart services.** The existing bot token appeared in a development terminal transcript. The owner has chosen to retain it for now; that leaves residual credential-exposure risk. This rollout preserves the existing token without repeating it in source code or chat.
+## Защита production-данных
 
-## Production invariants
+Рабочая база данных остаётся здесь:
 
-- The existing database remains /root/ScoringSystemBot/points.db.
-- No table is created, altered, dropped, renamed or migrated by these patches.
-- The Telegram bot and API continue to use the same business database file.
-- Mobile auth and note history are stored in private sidecar files under /root/ScoringSystemBot/.private/.
-- The patch scripts create backups under /root/ScoringSystemBot/.backups/.
-- Do not copy an example database into the project and do not point POINTS_DB_PATH at a new file.
+`/root/ScoringSystemBot/points.db`
 
-## Prerequisites
+Это основная база баланса, транзакций и заявок. Существующие записи и схема должны сохраняться. Не заменяйте её тестовой базой и не выполняйте миграции без отдельного согласования.
 
-1. Verify that /root/ScoringSystemBot/webapp/.env contains a non-empty TG_BOT_TOKEN without printing or copying its value. The current production file already contains this setting.
-2. Before exposing the file to the bot service, restrict it to root: `chmod 600 /root/ScoringSystemBot/webapp/.env`. The current file is more permissive than necessary.
-3. The API loads webapp/.env through api/config.py. The current tgbot.service does not load that file, so after reviewing the unit create a systemd drop-in containing:
-   
-   ~~~ini
-   [Service]
-   EnvironmentFile=/root/ScoringSystemBot/webapp/.env
-   ~~~
+Дополнительные данные хранятся вне `points.db`:
 
-   This keeps the existing token unchanged while allowing Bot.py to read it from the process environment. Do not print the EnvironmentFile contents or systemd environment values.
-4. Confirm that POINTS_DB_PATH still resolves to /root/ScoringSystemBot/points.db.
-5. Ensure a database backup and PRAGMA integrity_check have been completed separately.
-6. Do not revoke or rotate the token as part of this rollout unless the owner separately chooses to do so. The decision to retain it does not eliminate the residual exposure risk.
+- мобильные приглашения и сессии;
+- заметки;
+- фотографии-доказательства;
+- токены push-устройств;
+- состояние режима приложения.
 
-## Get the V2 files
+Закрытые каталоги и файлы должны иметь ограниченные права доступа (обычно каталоги `0700`, файлы `0600`).
 
-From the VPS, clone the development branch to a temporary directory (not over the running application):
+## Подготовка и проверки
 
-~~~bash
-cd /tmp
-git clone --depth 1 --branch v2-development https://github.com/FireGamesPlay/FireCoins-IOS.git FireCoins-IOS-v2
-~~~
+Перед изменением production:
 
-Copy only the backend files required by the patches:
+1. Проверьте путь к рабочей базе, не выводя секреты и содержимое пользовательских записей.
+2. Выполните `PRAGMA integrity_check`.
+3. Убедитесь, что резервная копия рабочей базы существует и проверена.
+4. Запустите компиляцию и тесты изолированно.
+5. Проверьте, что скрипт изменения соответствует текущему исходному коду.
+6. Подготовьте план отката.
+
+Команды локальной проверки:
 
 ~~~bash
-cd /root/ScoringSystemBot
-install -d -m 700 .private .backups
-
-install -m 644 /tmp/FireCoins-IOS-v2/Backend/api/mobile_auth.py webapp/api/mobile_auth.py
-install -m 644 /tmp/FireCoins-IOS-v2/Backend/api/workflow_store.py webapp/api/workflow_store.py
+PYTHONPATH=Backend python -m compileall -q Backend
+PYTHONPATH=Backend python -m unittest discover -s Backend/tests -v
 ~~~
 
-The Backend/api/__init__.py file is not required if the live webapp/api package already exists.
+## Фотографии-доказательства
 
-## Offline checks before patching
+Новые фотографии хранятся на VPS Fire Coins в приватном хранилище. Для них не требуется Telegram `file_id` или запрос к Telegram API.
 
-Run isolated tests on the checkout, not against the production database:
+Старые доказательства были перенесены из Telegram в приватное хранилище. Их старые ссылки в рабочей таблице транзакций оставлены без изменений; соответствие старой ссылки локальному файлу хранится в отдельном защищённом индексе.
 
-~~~bash
-cd /tmp/FireCoins-IOS-v2
-PYTHONPATH=Backend python3 -m compileall -q Backend
-PYTHONPATH=Backend python3 -m unittest discover -s Backend/tests -v
-~~~
+Сервер определяет тип изображения по сигнатуре байтов, ограничивает размер загрузки и отдаёт файл только после проверки авторизации и прав пользователя.
 
-Then check the actual config and service environment without printing values:
-- POINTS_DB_PATH must remain the existing file.
-- Both API and bot must receive the new TG_BOT_TOKEN.
-- Never paste .env, systemctl show -p Environment, /proc/*/environ, or private key material into chat.
+## Тестовый режим
 
-## Apply source patches — no restart
+Sandbox — отдельная среда, переключаемая авторизованным пользователем через API.
 
-Only after the prerequisites pass:
+- Для тестовой БД используется отдельный файл под приватным каталогом.
+- При создании копируется только структура таблиц, без записей рабочей БД.
+- Запросы API используют путь активной среды.
+- Для заметок и фотографий предусмотрены отдельные sandbox-хранилища.
+- Переключение режима сериализуется с выполняемыми операциями.
+- При выключении sandbox данные песочницы очищаются; рабочая БД остаётся нетронутой.
+- При повреждении или невалидном состоянии sandbox сервер должен остановить операцию, а не переключиться на production незаметно.
 
-~~~bash
-cd /root/ScoringSystemBot/webapp
-/root/ScoringSystemBot/webapp/venv/bin/python3 /tmp/FireCoins-IOS-v2/Backend/patches/apply_mobile_auth_patch.py
-/root/ScoringSystemBot/webapp/venv/bin/python3 /tmp/FireCoins-IOS-v2/Backend/patches/apply_workflow_disputes_patch.py
-~~~
+Скрипты тестов должны работать только с временными каталогами и тестовыми файлами.
 
-Both scripts:
-- verify exact source preconditions;
-- create timestamped, permission-restricted backups first;
-- write source files atomically;
-- do not modify points.db;
-- do not restart the API or Telegram bot.
+## Push-уведомления
 
-If a precondition fails, stop and inspect the diff. Do not force the patch onto a different version of the backend.
+Серверная отправка системных push-уведомлений должна быть независима от Telegram.
 
-Validate syntax:
+Ожидаемая схема:
+- клиент регистрирует FCM-токен под своей авторизованной сессией;
+- сервер хранит токены в приватном sidecar-хранилище;
+- сервер сам определяет целевой аккаунт для события;
+- сообщение отправляется через FCM HTTP v1;
+- недействительные токены удаляются после ответа FCM;
+- сбой push-доставки не отменяет уже сохранённую транзакцию или заметку.
 
-~~~bash
-cd /root/ScoringSystemBot
-python3 -m py_compile Bot.py webapp/api/config.py webapp/api/server.py webapp/api/services.py webapp/api/telegram_auth.py webapp/api/mobile_auth.py webapp/api/workflow_store.py
-~~~
+Секретный ключ Firebase Service Account хранится только на VPS. Его нельзя коммитить, публиковать в GitHub Actions artifacts или отправлять в переписку. Для iOS в Firebase Console также настраивается APNs Authentication Key.
 
-The two services should not be restarted until source diffs, the actual systemd token configuration, a staging test against a temporary copy of the database, and the rollback plan have all been reviewed.
+Токены устройств и данные push-хранилища не должны размещаться в рабочей SQLite-базе.
 
-## Initialize one-time invitations
+## Скрипты применения изменений
 
-After the mobile auth source has been installed and reviewed, initialize the two role-bound invitations once:
+Скрипты в `Backend/patches/` предназначены для контролируемого применения изменений к существующему серверному коду. Перед запуском проверьте исходный код, резервную копию и предусловия каждого скрипта.
 
-~~~bash
-cd /root/ScoringSystemBot/webapp
-./venv/bin/python3 -m api.mobile_auth --bootstrap
-~~~
+Не перезапускайте сервисы автоматически из непроверенного скрипта. Сначала проверьте синтаксис, тесты, права файлов и доступность API, затем выполняйте отдельный контролируемый restart.
 
-The codes are printed once to the local VPS terminal. Save each privately and deliver it only to its intended account owner. Never put the output into GitHub, chat, shell scripts, logs or a shared terminal recording.
+## Откат
 
-Do not run --rotate unless you intentionally want to invalidate all mobile sessions and replace both invitations.
+- Не восстанавливайте и не перезаписывайте `points.db` при откате только программного кода.
+- Восстанавливайте конкретные резервные копии исходных файлов, созданные до применения патча.
+- Не удаляйте мобильное хранилище авторизации без необходимости: это может отозвать все активные сессии и приглашения.
+- Данные фотографий и заметок хранятся отдельно от SQLite и не должны удаляться при обычном откате API.
+- При проблеме с sandbox сначала отключите тестовый режим контролируемым переключением; не меняйте путь к рабочей базе вручную.
 
-## Rollback
+## Секреты
 
-- Do not restore or overwrite points.db for a code-only rollback.
-- Restore the timestamped source backups created under /root/ScoringSystemBot/.backups/.
-- Keep the private auth/workflow sidecars unless intentionally revoking mobile sessions or notes. Replacing the mobile auth sidecar invalidates all mobile sessions and invitation codes.
-- Restart only after the exact systemd service units, token environment and rollback source have been checked.
+Не выводите и не отправляйте в чат:
 
-This guide deliberately does not include production restart commands. A separate deployment review is required before switching the running API or bot to V2.
+- `.env` и переменные окружения процесса;
+- Telegram bot token;
+- Firebase Service Account JSON;
+- приватные ключи APNs;
+- сертификаты подписи и пароли;
+- коды приглашений, access/refresh-токены;
+- приватные пользовательские данные.
+
+Любые секреты должны передаваться только через защищённые файлы или Secret-хранилища с минимальными правами доступа.

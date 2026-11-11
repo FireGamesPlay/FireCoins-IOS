@@ -9,7 +9,7 @@ enum AppRole: String, CaseIterable, Identifiable, Equatable {
     var title: String {
         switch self {
         case .artemiy: return "Артемий"
-        case .father: return "Папа"
+        case .father: return "Макс"
         }
     }
 
@@ -23,7 +23,7 @@ enum AppRole: String, CaseIterable, Identifiable, Equatable {
     var initials: String {
         switch self {
         case .artemiy: return "А"
-        case .father: return "П"
+        case .father: return "М"
         }
     }
 }

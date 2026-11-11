@@ -7,6 +7,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var activeRole: AppRole?
     @Published private(set) var isRestoringSession = true
     @Published private(set) var sessionError: String?
+    @Published private(set) var settings = FireCoinsAppSettings()
+    @Published private(set) var avatarData: Data?
 
     private let repository: FireCoinsRepository
     private let sessionManager: FireCoinsSessionManaging?
@@ -28,6 +30,9 @@ final class AppStore: ObservableObject {
         do {
             activeRole = try await sessionManager.restoreSession()
             refresh()
+            if activeRole != nil {
+                await refreshAccountSettings()
+            }
         } catch {
             activeRole = nil
             sessionError = error.localizedDescription
@@ -44,6 +49,7 @@ final class AppStore: ObservableObject {
         do {
             try await sessionManager.refreshSnapshot()
             refresh()
+            await refreshAccountSettings()
         } catch {
             // Authentication has succeeded; do not make the one-time invite unusable
             // by showing the invitation screen again for a temporary data-fetch error.
@@ -56,12 +62,68 @@ final class AppStore: ObservableObject {
         activeRole = nil
         sessionError = nil
         snapshot = repository.snapshot()
+        settings = FireCoinsAppSettings()
+        avatarData = nil
+    }
+
+    func reissueInvitation() async throws -> String {
+        guard activeRole != nil, let sessionManager else {
+            throw FireCoinsRemoteErrorForStore.notConfigured
+        }
+        return try await sessionManager.reissueInvitation()
+    }
+
+    func refreshAccountSettings() async {
+        guard let sessionManager, let role = activeRole else { return }
+        do {
+            settings = try await sessionManager.loadSettings()
+            avatarData = try await sessionManager.loadAvatar(for: role)
+        } catch {
+            // Profile content remains usable even if optional settings/avatar requests fail.
+        }
+    }
+
+    func setSandboxMode(_ enabled: Bool) async throws {
+        guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
+        settings = try await sessionManager.setSandboxMode(enabled)
+        avatarData = try await sessionManager.loadAvatar(for: activeRole ?? .artemiy)
+        try await sessionManager.refreshSnapshot()
+        refresh()
+    }
+
+    func uploadAvatar(_ data: Data) async throws {
+        guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
+        try await sessionManager.uploadAvatar(data)
+        avatarData = try await sessionManager.loadAvatar(for: activeRole ?? .artemiy)
+    }
+
+    func issueDatabaseResetChallenge() async throws -> String {
+        guard activeRole == .father, let sessionManager else {
+            throw FireCoinsRemoteErrorForStore.notConfigured
+        }
+        return try await sessionManager.issueDatabaseResetChallenge()
+    }
+
+    func resetCurrentDatabase(resetToken: String, confirmation: String) async throws {
+        guard activeRole == .father, let sessionManager else {
+            throw FireCoinsRemoteErrorForStore.notConfigured
+        }
+        try await sessionManager.resetCurrentDatabase(resetToken: resetToken, confirmation: confirmation)
+        try await sessionManager.refreshSnapshot()
+        refresh()
+        await refreshAccountSettings()
+    }
+
+    func registerPushToken(_ token: String, deviceID: String) async throws {
+        guard let sessionManager else { throw FireCoinsRemoteErrorForStore.notConfigured }
+        try await sessionManager.registerPushToken(token, deviceID: deviceID)
     }
 
     func refreshRemote() async throws {
         try await sessionManager?.refreshSnapshot()
         sessionError = nil
         refresh()
+        await refreshAccountSettings()
     }
 
     func refresh() {

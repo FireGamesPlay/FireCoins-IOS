@@ -10,6 +10,7 @@ struct InvitationView: View {
     var body: some View {
         ZStack {
             FCTheme.background.ignoresSafeArea()
+                .onTapGesture { KeyboardDismiss.dismiss() }
             RadialGradient(colors: [FCTheme.accent.opacity(0.13), .clear], center: .top, startRadius: 15, endRadius: 370)
                 .ignoresSafeArea()
 
