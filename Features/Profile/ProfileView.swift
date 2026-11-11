@@ -84,7 +84,7 @@ struct ProfileView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("FIRE COINS · PROTOTYPE 0.1")
+                    Text("FIRE COINS · V2.0 BETA")
                         .font(.system(size: 9, weight: .medium))
                         .tracking(1.5)
                         .foregroundStyle(FCTheme.muted.opacity(0.6))
