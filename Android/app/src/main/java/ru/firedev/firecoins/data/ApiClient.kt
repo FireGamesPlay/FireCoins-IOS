@@ -68,53 +68,6 @@ class ApiClient(context: Context) {
         )
     }
 
-    suspend fun uploadAvatar(imageBytes: ByteArray) {
-        require(imageBytes.isNotEmpty() && imageBytes.size <= MAX_AVATAR_BYTES) {
-            "Аватар должен быть изображением размером до 4 МБ."
-        }
-        val boundary = "FireCoins-Avatar-${UUID.randomUUID()}"
-        val result = withContext(Dispatchers.IO) {
-            val connection = openConnection("/api/profile/avatar", "POST", authenticated = true)
-            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-            connection.doOutput = true
-            connection.outputStream.use { output ->
-                output.write("--$boundary\r\n".toByteArray())
-                output.write("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\r\n".toByteArray())
-                output.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
-                output.write(imageBytes)
-                output.write("\r\n--$boundary--\r\n".toByteArray())
-            }
-            readResponse(connection)
-        }
-        if (result.first !in 200..299) {
-            throw IOException(result.second.optJSONObject("error")?.optString("message").orEmpty().ifBlank { "Не удалось сохранить аватар." })
-        }
-    }
-
-    suspend fun downloadAvatar(role: String): ByteArray? = withContext(Dispatchers.IO) {
-        val connection = openConnection("/api/profile/avatar/$role", "GET", authenticated = true)
-        try {
-            val code = connection.responseCode
-            if (code == HttpURLConnection.HTTP_NOT_FOUND) return@withContext null
-            if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                throw IOException("Сессия истекла. Обновите аккаунт.")
-            }
-            if (code !in 200..299) {
-                val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                throw IOException(parseError(text, code))
-            }
-            val type = connection.contentType.orEmpty().substringBefore(';').trim().lowercase()
-            if (!type.startsWith("image/")) throw IOException("Сервер вернул некорректный аватар.")
-            val bytes = connection.inputStream.use { it.readBytes() }
-            if (bytes.isEmpty() || bytes.size > MAX_AVATAR_BYTES || !isSupportedImage(bytes)) {
-                throw IOException("Файл аватара повреждён.")
-            }
-            bytes
-        } finally {
-            connection.disconnect()
-        }
-    }
-
     suspend fun registerPushToken(token: String, deviceId: String) {
         call(
             "/api/mobile/push/register",
@@ -205,8 +158,8 @@ class ApiClient(context: Context) {
         return withContext(Dispatchers.IO) {
             val connection = openConnection("/api/proof/$transactionId", "GET", authenticated = true)
             try {
-                connection.connectTimeout = 12_000
-                connection.readTimeout = 20_000
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 15_000
                 connection.setRequestProperty("Accept", "image/*")
                 connection.setRequestProperty("Accept-Encoding", "identity")
                 connection.setRequestProperty("Connection", "close")
@@ -341,8 +294,8 @@ class ApiClient(context: Context) {
         val url = URL("$BASE_URL$path")
         return (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 20_000
-            readTimeout = 45_000
+            connectTimeout = 10_000
+            readTimeout = 15_000
             useCaches = false
             setRequestProperty("Accept", "application/json")
             if (authenticated) {
@@ -401,6 +354,5 @@ class ApiClient(context: Context) {
     private companion object {
         const val BASE_URL = "https://app.firegames-it.tech"
         const val MAX_PROOF_BYTES = 12L * 1024L * 1024L
-        const val MAX_AVATAR_BYTES = 4 * 1024 * 1024
     }
 }
