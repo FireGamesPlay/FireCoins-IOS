@@ -172,7 +172,7 @@ jobs:
               "signingStyle": "manual",
               "signingCertificate": os.environ["SIGNING_CERT_SHA1"],
               "provisioningProfiles": {
-                  "ru.firedev.firecoins": os.environ["PROFILE_NAME"]
+                  "app.firecoins": os.environ["PROFILE_NAME"]
               },
               "destination": "export"
           }
