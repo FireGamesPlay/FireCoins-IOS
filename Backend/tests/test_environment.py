@@ -6,6 +6,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import sys
+import types
+
+config_stub = types.ModuleType("api.config")
+config_stub.ARTEMIY_ID = 222
+config_stub.FATHER_ID = 111
+config_stub.POINTS_DB_PATH = Path("/tmp/firecoins-points-environment-test.db")
+config_stub.MOBILE_AUTH_STORE_PATH = Path("/tmp/firecoins-mobile-auth-environment-test.json")
+config_stub.MOBILE_STATE_STORE_PATH = Path("/tmp/firecoins-mobile-state-environment-test.json")
+config_stub.get_role = lambda user_id: {111: "father", 222: "artemiy"}.get(user_id, "unknown")
+sys.modules.setdefault("api.config", config_stub)
+
 from api.environment import DatabaseMode, DatabaseModeError
 
 
