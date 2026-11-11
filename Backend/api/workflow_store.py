@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import ARTEMIY_ID, FATHER_ID, POINTS_DB_PATH
+from .environment import current_sidecar_root
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -141,3 +142,15 @@ class WorkflowStore:
 
 
 workflow_store = WorkflowStore()
+_WORKFLOW_STORES: dict[Path, WorkflowStore] = {WORKFLOW_STORE_PATH: workflow_store}
+
+
+def get_workflow_store() -> WorkflowStore:
+    production_root = WORKFLOW_STORE_PATH.parent
+    active_root = current_sidecar_root(production_root)
+    path = WORKFLOW_STORE_PATH if active_root == production_root else active_root / WORKFLOW_STORE_PATH.name
+    store = _WORKFLOW_STORES.get(path)
+    if store is None:
+        store = WorkflowStore(path)
+        _WORKFLOW_STORES[path] = store
+    return store
