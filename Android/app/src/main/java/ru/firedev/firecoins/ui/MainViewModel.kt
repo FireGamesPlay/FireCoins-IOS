@@ -1,6 +1,7 @@
 package ru.firedev.firecoins.ui
 
 import android.app.Application
+import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import androidx.lifecycle.AndroidViewModel
@@ -257,20 +258,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun registerPushDevice() {
-        if (state.value.role == null) return
+        val role = state.value.role ?: return
         viewModelScope.launch {
             try {
-                if (FirebaseApp.getApps(getApplication()).isEmpty()) return@launch
+                if (FirebaseApp.getApps(getApplication()).isEmpty()) {
+                    Log.w(TAG, "FirebaseApp is not initialized; push registration skipped.")
+                    return@launch
+                }
                 val token = FirebaseMessaging.getInstance().token.await()
-                if (token.isNullOrBlank()) return@launch
+                if (token.isNullOrBlank()) {
+                    throw IllegalStateException("Firebase returned an empty registration token.")
+                }
                 val previous = PushDeviceIdentity.token(getApplication())
                 if (!previous.isNullOrBlank() && previous != token) {
                     runCatching { repository.unregisterPushToken(previous) }
                 }
                 repository.registerPushToken(token, PushDeviceIdentity.deviceId(getApplication()))
                 PushDeviceIdentity.saveToken(getApplication(), token)
-            } catch (_: Exception) {
-                // Firebase is optional until the project configuration is installed.
+                Log.i(TAG, "FCM device registered for role=$role.")
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "FCM device registration failed: ${error.javaClass.simpleName}: ${error.message}"
+                )
             }
         }
     }
@@ -374,4 +384,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         spinsLeft = spinsLeft,
         pendingDisputes = pendingDisputes
     )
+
+    private companion object {
+        const val TAG = "FireCoinsPush"
+    }
 }
