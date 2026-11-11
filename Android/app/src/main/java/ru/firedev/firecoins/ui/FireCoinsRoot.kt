@@ -100,11 +100,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
+import java.util.LinkedHashMap
 import ru.firedev.firecoins.data.FcCasinoRound
 import ru.firedev.firecoins.data.FcNote
 import ru.firedev.firecoins.data.FcTransaction
@@ -149,32 +154,60 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     var selectedProofBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var proofLoading by remember { mutableStateOf(false) }
     var proofError by remember { mutableStateOf<String?>(null) }
+    var proofRequestJob by remember { mutableStateOf<Job?>(null) }
+    // Cache only successfully decoded images so reopening the same proof is instant.
+    val proofBitmapCache = remember {
+        LinkedHashMap<Long, ImageBitmap>(8, 0.75f, true)
+    }
 
-    val openProof: (Long) -> Unit = { transactionId ->
-        scope.launch {
+    val openProof: (Long) -> Unit = proofClick@{ transactionId ->
+        if (proofLoading) return@proofClick
+
+        proofBitmapCache[transactionId]?.let { cached ->
+            selectedProofBitmap = cached
+            proofError = null
+            return@proofClick
+        }
+
+        proofRequestJob = scope.launch {
             proofLoading = true
             proofError = null
+            selectedProofBitmap = null
             try {
-                val bytes = viewModel.downloadProof(transactionId)
-                selectedProofBitmap = withContext(Dispatchers.Default) {
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-                        throw IllegalStateException("Файл не является корректной фотографией.")
+                val bitmap = withTimeout(25_000) {
+                    val bytes = viewModel.downloadProof(transactionId)
+                    withContext(Dispatchers.Default) {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                            throw IllegalStateException("Сервер вернул файл, который не удалось распознать как фотографию.")
+                        }
+                        var sampleSize = 1
+                        while (bounds.outWidth / sampleSize > 2048 || bounds.outHeight / sampleSize > 2048) {
+                            sampleSize *= 2
+                        }
+                        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+                            ?: throw IllegalStateException("Не удалось декодировать фотографию.")
                     }
-                    var sampleSize = 1
-                    while (bounds.outWidth / sampleSize > 2048 || bounds.outHeight / sampleSize > 2048) {
-                        sampleSize *= 2
-                    }
-                    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-                        ?: throw IllegalStateException("Не удалось открыть фотографию.")
                 }
+
+                proofBitmapCache[transactionId] = bitmap
+                while (proofBitmapCache.size > 8) {
+                    val oldestId = proofBitmapCache.keys.firstOrNull() ?: break
+                    proofBitmapCache.remove(oldestId)
+                }
+                selectedProofBitmap = bitmap
+            } catch (error: TimeoutCancellationException) {
+                proofError = "Загрузка фотографии превысила 25 секунд. Попробуйте ещё раз."
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 proofError = error.message?.takeIf { it.isNotBlank() }
                     ?: "Не удалось загрузить фотографию."
             } finally {
                 proofLoading = false
+                proofRequestJob = null
             }
         }
     }
@@ -357,7 +390,7 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
     }
 
     if (proofLoading) {
-        Dialog(onDismissRequest = {}) {
+        Dialog(onDismissRequest = { proofRequestJob?.cancel() }) {
             Surface(
                 shape = RoundedCornerShape(22.dp),
                 color = FcSurface,
@@ -370,6 +403,9 @@ fun FireCoinsRoot(viewModel: MainViewModel) {
                 ) {
                     CircularProgressIndicator(color = FcAccent)
                     Text("Открываем фотографию…", color = FcText, fontSize = 14.sp)
+                    TextButton(onClick = { proofRequestJob?.cancel() }) {
+                        Text("Отмена", color = FcAccentLight)
+                    }
                 }
             }
         }
