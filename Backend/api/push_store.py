@@ -117,3 +117,7 @@ class PushStore:
             return state["devices"].pop(str(key), None) is not None
 
 
+
+from .config import MOBILE_AUTH_STORE_PATH
+
+push_store = PushStore(MOBILE_AUTH_STORE_PATH.parent / "push_devices.json")
