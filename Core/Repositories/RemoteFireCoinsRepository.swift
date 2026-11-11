@@ -141,12 +141,29 @@ private struct InvitationReissueEnvelopeDTO: Decodable {
     let invitation: Invitation
 }
 
+private struct SettingsEnvelopeDTO: Decodable {
+    struct EnvironmentDTO: Decodable {
+        let mode: String
+        let isSandbox: Bool
+        let label: String
+    }
+    let environment: EnvironmentDTO
+    let canResetDatabase: Bool
+    let pushConfigured: Bool
+}
+
+private struct ResetChallengeEnvelopeDTO: Decodable {
+    let resetToken: String
+    let expiresIn: Int
+}
+
 private enum FireCoinsRemoteError: LocalizedError {
     case invalidServerResponse
     case unauthorized
     case missingSession
     case unsupportedRole
     case invalidIdentifier
+    case notFound
     case server(String)
     case imageUploadFailed
 
@@ -162,6 +179,8 @@ private enum FireCoinsRemoteError: LocalizedError {
             return "Сервер вернул неизвестную роль аккаунта."
         case .invalidIdentifier:
             return "Не удалось определить идентификатор операции."
+        case .notFound:
+            return "Данные не найдены."
         case .server(let message):
             return message
         case .imageUploadFailed:
@@ -265,15 +284,86 @@ private final class FireCoinsAPIClient {
         return role
     }
 
-    func reissueAdminInvitation() async throws -> String {
+    func reissueInvitation(for role: AppRole) async throws -> String {
         let response: InvitationReissueEnvelopeDTO = try await post(
             "/api/mobile/invitations/reissue",
             payload: [:]
         )
-        guard response.invitation.role == "father", !response.invitation.code.isEmpty else {
+        guard response.invitation.role == role.rawValue, !response.invitation.code.isEmpty else {
             throw FireCoinsRemoteError.invalidServerResponse
         }
         return response.invitation.code
+    }
+
+    func loadSettings() async throws -> FireCoinsAppSettings {
+        let response: SettingsEnvelopeDTO = try await get("/api/settings")
+        return FireCoinsAppSettings(
+            isSandbox: response.environment.isSandbox,
+            environmentLabel: response.environment.label,
+            canResetDatabase: response.canResetDatabase,
+            pushConfigured: response.pushConfigured
+        )
+    }
+
+    func setSandboxMode(_ enabled: Bool) async throws -> FireCoinsAppSettings {
+        let _: EmptyEnvelopeDTO = try await post(
+            "/api/settings/sandbox",
+            payload: ["enabled": enabled]
+        )
+        return try await loadSettings()
+    }
+
+    func issueDatabaseResetChallenge() async throws -> String {
+        let response: ResetChallengeEnvelopeDTO = try await post(
+            "/api/settings/database/reset/challenge",
+            payload: [:]
+        )
+        guard !response.resetToken.isEmpty, response.expiresIn > 0 else {
+            throw FireCoinsRemoteError.invalidServerResponse
+        }
+        return response.resetToken
+    }
+
+    func resetCurrentDatabase(resetToken: String, confirmation: String) async throws {
+        try await postEmpty(
+            "/api/settings/database/reset",
+            payload: ["reset_token": resetToken, "confirmation": confirmation]
+        )
+    }
+
+    func uploadAvatar(_ imageData: Data) async throws {
+        let boundary = "FireCoins-Avatar-\(UUID().uuidString)"
+        var body = Data()
+        body.append("--\(boundary)\\r\\n")
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"avatar.jpg\"\\r\\n")
+        body.append("Content-Type: image/jpeg\\r\\n\\r\\n")
+        body.append(imageData)
+        body.append("\\r\\n--\(boundary)--\\r\\n")
+        _ = try await sendData(
+            path: "/api/profile/avatar",
+            method: "POST",
+            body: body,
+            contentType: "multipart/form-data; boundary=\(boundary)"
+        )
+    }
+
+    func downloadAvatar(for role: AppRole) async throws -> Data? {
+        do {
+            return try await sendData(
+                path: "/api/profile/avatar/\(role.rawValue)",
+                method: "GET",
+                contentType: nil
+            )
+        } catch FireCoinsRemoteError.notFound {
+            return nil
+        }
+    }
+
+    func registerPushToken(_ token: String, deviceID: String) async throws {
+        try await postEmpty(
+            "/api/mobile/push/register",
+            payload: ["token": token, "platform": "ios", "device_id": deviceID]
+        )
     }
 
     func restoreSession() async throws -> AppRole? {
@@ -465,6 +555,9 @@ private final class FireCoinsAPIClient {
             if http.statusCode == 401 {
                 throw FireCoinsRemoteError.unauthorized
             }
+            if http.statusCode == 404, envelope?.error?.code == "avatar_not_found" {
+                throw FireCoinsRemoteError.notFound
+            }
             throw FireCoinsRemoteError.server(message)
         }
         return data
@@ -559,9 +652,49 @@ final class RemoteFireCoinsRepository: FireCoinsRepository, FireCoinsSessionMana
         state = FireCoinsSnapshot(balance: 0, transactions: [], withdrawals: [], notes: [], casinoRounds: [])
     }
 
-    func reissueAdminInvitation() async throws -> String {
+    func reissueInvitation() async throws -> String {
+        guard let currentRole else { throw FireCoinsRemoteError.missingSession }
+        return try await api.reissueInvitation(for: currentRole)
+    }
+
+    func loadSettings() async throws -> FireCoinsAppSettings {
+        try await api.loadSettings()
+    }
+
+    func setSandboxMode(_ enabled: Bool) async throws -> FireCoinsAppSettings {
+        try await api.setSandboxMode(enabled)
+    }
+
+    func issueDatabaseResetChallenge() async throws -> String {
         guard currentRole == .father else { throw FireCoinsRemoteError.unauthorized }
-        return try await api.reissueAdminInvitation()
+        return try await api.issueDatabaseResetChallenge()
+    }
+
+    func resetCurrentDatabase(resetToken: String, confirmation: String) async throws {
+        guard currentRole == .father else { throw FireCoinsRemoteError.unauthorized }
+        try await api.resetCurrentDatabase(resetToken: resetToken, confirmation: confirmation)
+    }
+
+    func uploadAvatar(_ data: Data) async throws {
+        let jpeg = try Self.normalizedAvatarJPEG(data)
+        try await api.uploadAvatar(jpeg)
+    }
+
+    func loadAvatar(for role: AppRole) async throws -> Data? {
+        try await api.downloadAvatar(for: role)
+    }
+
+    func registerPushToken(_ token: String, deviceID: String) async throws {
+        try await api.registerPushToken(token, deviceID: deviceID)
+    }
+
+    private static func normalizedAvatarJPEG(_ data: Data) throws -> Data {
+        guard let image = UIImage(data: data),
+              let jpeg = image.jpegData(compressionQuality: 0.86),
+              jpeg.count <= 4 * 1024 * 1024 else {
+            throw FireCoinsRemoteError.server("Аватар должен быть изображением JPEG размером до 4 МБ.")
+        }
+        return jpeg
     }
 
     func refreshSnapshot() async throws {
